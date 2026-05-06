@@ -69,3 +69,28 @@ python main.py --image input/test.jpg --ocr-engine yolo --char-model models/char
 ## Giai thich code
 
 Xem `docs/roboflow_ocr_explanation.md` de doc giai thich tung dong/nhom dong cua phan tich hop Roboflow.
+
+## Audit toàn bộ folder input
+
+Dùng script audit để thống kê ảnh không detect được biển số, OCR rỗng, OCR sai format biển số Việt Nam hoặc confidence thấp:
+
+```powershell
+python tools/audit_input_folder.py --input-dir input --detect-engine roboflow --ocr-engine roboflow
+```
+
+Kết quả mặc định:
+
+- `docs/input_audit_results.csv`: chi tiết từng ảnh.
+- `docs/input_audit_report.md`: thống kê tổng hợp và danh sách ảnh cần xử lý lại.
+
+Có thể chạy thử nhanh vài ảnh trước:
+
+```powershell
+python tools/audit_input_folder.py --input-dir input --limit 20
+```
+
+Nếu muốn chỉ kiểm tra detect vùng biển và chưa gọi OCR:
+
+```powershell
+python tools/audit_input_folder.py --input-dir input --ocr-engine none
+```
