@@ -1,0 +1,128 @@
+# === run.py ===
+# Script tien ich: chay 1 lenh de xu ly anh va xem ket qua.
+#
+# Cach dung:
+#   py run.py input/can-canh.jpg
+#   py run.py input/test.jpg --conf 0.15
+#   py run.py input/test.jpg --no-show
+#   py run.py input/test.jpg --detect yolo     (dung YOLO local cho detect)
+
+import sys
+import os
+import cv2
+
+from src.pipeline import LicensePlatePipeline
+from src.utils import ensure_dir
+
+
+def run(
+    image_path: str,
+    char_conf: float = 0.25,
+    show: bool = True,
+    detect_engine: str = "roboflow"
+):
+    """
+    Xu ly 1 anh va hien thi ket qua.
+
+    Args:
+        image_path: duong dan anh can xu ly
+        char_conf: nguong confidence OCR ky tu
+        show: True = tu dong mo anh ket qua
+        detect_engine: "roboflow" (chinh xac) hoac "yolo" (nhanh, offline)
+    """
+
+    # Kiem tra file anh
+    if not os.path.isfile(image_path):
+        print(f"[ERROR] File khong ton tai: {image_path}")
+        return
+
+    # Tao ten file output
+    basename = os.path.splitext(os.path.basename(image_path))[0]
+    output_path = f"output/{basename}_result.jpg"
+
+    # Doc API key tu .env
+    api_key = os.getenv("ROBOFLOW_API_KEY")
+    if not api_key and os.path.isfile(".env"):
+        with open(".env", "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("ROBOFLOW_API_KEY="):
+                    api_key = line.split("=", 1)[1].strip()
+                    break
+
+    if not api_key:
+        print("[ERROR] Chua co ROBOFLOW_API_KEY.")
+        print("  Cach 1: tao file .env voi noi dung: ROBOFLOW_API_KEY=key_cua_ban")
+        print("  Cach 2: $env:ROBOFLOW_API_KEY='key_cua_ban'")
+        return
+
+    # Tao pipeline
+    pipeline = LicensePlatePipeline(
+        plate_model_path="models/plate_detector.pt",
+        char_conf=char_conf,
+        ocr_engine="roboflow",
+        detect_engine=detect_engine,
+        roboflow_api_key=api_key
+    )
+
+    # Chay pipeline
+    output_image, results = pipeline.process_image(image_path)
+
+    # Luu anh ket qua
+    ensure_dir("output")
+    cv2.imwrite(output_path, output_image)
+
+    # In ket qua
+    print("\n" + "=" * 50)
+    print(f"  KET QUA OCR BIEN SO XE")
+    print("=" * 50)
+
+    if not results:
+        print("  Khong detect duoc bien so nao.")
+    else:
+        for i, item in enumerate(results, 1):
+            print(f"  Bien so {i}: {item['text']}")
+            print(f"  Score:     {item['score']:.2f}")
+            print(f"  Box:       {item['box']}")
+            if i < len(results):
+                print("-" * 50)
+
+    print("=" * 50)
+    print(f"  Anh ket qua: {output_path}")
+    print("=" * 50)
+
+    # Mo anh ket qua
+    if show:
+        os.startfile(os.path.abspath(output_path))
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Cach dung:")
+        print("  py run.py <duong_dan_anh>")
+        print("  py run.py input/can-canh.jpg")
+        print("  py run.py input/test.jpg --conf 0.15")
+        print("  py run.py input/test.jpg --no-show")
+        print("  py run.py input/test.jpg --detect yolo")
+        sys.exit(1)
+
+    img = sys.argv[1]
+
+    # Parse --conf
+    conf = 0.25
+    if "--conf" in sys.argv:
+        idx = sys.argv.index("--conf")
+        if idx + 1 < len(sys.argv):
+            conf = float(sys.argv[idx + 1])
+
+    # Parse --no-show
+    show = "--no-show" not in sys.argv
+
+    # Parse --detect
+    det_engine = "roboflow"
+    if "--detect" in sys.argv:
+        idx = sys.argv.index("--detect")
+        if idx + 1 < len(sys.argv):
+            det_engine = sys.argv[idx + 1]
+
+    run(img, char_conf=conf, show=show, detect_engine=det_engine)
