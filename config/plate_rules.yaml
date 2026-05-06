@@ -12,6 +12,21 @@ format:
   remove_unknown_chars: true
 
 rules:
+  # Bien so nhom dac biet/ngoai giao/nuoc ngoai/chuyen dung co seri 2 chu cai
+  # nhu 89CD-002.13, 80NN-123.45, 80LD-123.45.
+  # Dat truoc rule xe dan dung de tach 5 so cuoi thanh 3 so + dau cham + 2 so.
+  - name: "vn_special_1_line_2_letters_5_digits"
+    type: "regex"
+    pattern: "^([0-9]{2})(CD|LD|NN|NG|QT|CV)([0-9]{3})([0-9]{2})$"
+    output: "{1}{2}-{3}.{4}"
+
+  # Truong hop OCR detect thua 1 so 0 o dau cum so dac biet
+  # vi dau cham/sang den bi nham thanh so 0: 89CD000213 -> 89CD-002.13.
+  - name: "vn_special_1_line_extra_leading_zero"
+    type: "regex"
+    pattern: "^([0-9]{2})(CD|LD|NN|NG|QT|CV)0([0-9]{3})([0-9]{2})$"
+    output: "{1}{2}-{3}.{4}"
+
   - name: "vn_car_1_line_8_chars"
     type: "regex"
     pattern: "^([0-9]{2})([A-Z]{1,2})([0-9]{4,5})$"
