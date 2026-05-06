@@ -104,6 +104,11 @@ def process_with_pipeline(args: argparse.Namespace, image_path: Path) -> list[di
         roboflow_detect_model_id=args.roboflow_detect_model_id,
         roboflow_api_url=args.roboflow_api_url,
         roboflow_timeout=args.roboflow_timeout,
+        gemini_api_key=args.gemini_api_key or os.getenv("GEMINI_API_KEY"),
+        gemini_model_id=args.gemini_model_id,
+        gemini_api_url=args.gemini_api_url,
+        fallback_ocr_engine=args.fallback_ocr_engine,
+        fallback_min_plate_score=args.fallback_min_plate_score,
     )
     _, results = pipeline.process_image(str(image_path))
     return results
@@ -169,6 +174,7 @@ def write_markdown(path: Path, rows: list[dict], args: argparse.Namespace, comma
         f"- Folder input: `{args.input_dir}`",
         f"- Detect engine: `{args.detect_engine}`",
         f"- OCR engine: `{args.ocr_engine}`",
+        f"- Fallback OCR engine: `{args.fallback_ocr_engine}`",
         f"- Tổng ảnh kiểm tra: **{total}**",
         "",
         "## Thống kê trạng thái",
@@ -219,17 +225,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=None, help="Giới hạn số ảnh để smoke test")
     parser.add_argument("--detect-engine", choices=["roboflow", "yolo"], default="roboflow")
     parser.add_argument("--ocr-engine", choices=["roboflow", "yolo", "none"], default="roboflow")
+    parser.add_argument("--fallback-ocr-engine", choices=["none", "gemini"], default="none")
     parser.add_argument("--plate-model", default="models/plate_detector.pt")
     parser.add_argument("--char-model", default=None)
     parser.add_argument("--plate-conf", type=float, default=0.25)
     parser.add_argument("--char-conf", type=float, default=0.25)
     parser.add_argument("--min-audit-score", type=float, default=0.35)
+    parser.add_argument("--fallback-min-plate-score", type=float, default=0.35)
     parser.add_argument("--config", default="config/plate_rules.yaml")
     parser.add_argument("--roboflow-api-key", default=None)
     parser.add_argument("--roboflow-model-id", default="license-plate-ocr-hugcj/3")
     parser.add_argument("--roboflow-detect-model-id", default="license-plate-recognition-rxg4e/4")
     parser.add_argument("--roboflow-api-url", default="https://detect.roboflow.com")
     parser.add_argument("--roboflow-timeout", type=float, default=30.0)
+    parser.add_argument("--gemini-api-key", default=None)
+    parser.add_argument("--gemini-model-id", default="gemini-2.5-flash")
+    parser.add_argument("--gemini-api-url", default="https://generativelanguage.googleapis.com/v1beta")
     parser.add_argument("--verbose", action="store_true", help="In log chi tiết của pipeline")
     return parser
 

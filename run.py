@@ -6,6 +6,7 @@
 #   py run.py input/test.jpg --conf 0.15
 #   py run.py input/test.jpg --no-show
 #   py run.py input/test.jpg --detect yolo     (dung YOLO local cho detect)
+#   py run.py input/test.jpg --fallback gemini  (chi dung Gemini khi OCR sai/empty)
 
 import sys
 import os
@@ -15,11 +16,28 @@ from src.pipeline import LicensePlatePipeline
 from src.utils import ensure_dir
 
 
+def _read_env_key(name: str):
+    value = os.getenv(name)
+    if value:
+        return value
+
+    if os.path.isfile(".env"):
+        with open(".env", "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(f"{name}="):
+                    return line.split("=", 1)[1].strip()
+
+    return None
+
+
 def run(
     image_path: str,
     char_conf: float = 0.25,
     show: bool = True,
-    detect_engine: str = "roboflow"
+    detect_engine: str = "roboflow",
+    ocr_engine: str = "roboflow",
+    fallback_ocr_engine: str = "auto"
 ):
     """
     Xu ly 1 anh va hien thi ket qua.
@@ -29,6 +47,8 @@ def run(
         char_conf: nguong confidence OCR ky tu
         show: True = tu dong mo anh ket qua
         detect_engine: "roboflow" (chinh xac) hoac "yolo" (nhanh, offline)
+        ocr_engine: OCR chinh, "roboflow" hoac "yolo"
+        fallback_ocr_engine: "auto", "none" hoac "gemini"; Gemini chi chay khi OCR chinh dang nghi
     """
 
     # Kiem tra file anh
@@ -40,29 +60,42 @@ def run(
     basename = os.path.splitext(os.path.basename(image_path))[0]
     output_path = f"output/{basename}_result.jpg"
 
-    # Doc API key tu .env
-    api_key = os.getenv("ROBOFLOW_API_KEY")
-    if not api_key and os.path.isfile(".env"):
-        with open(".env", "r") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("ROBOFLOW_API_KEY="):
-                    api_key = line.split("=", 1)[1].strip()
-                    break
+    # Doc API key tu bien moi truong hoac .env
+    roboflow_api_key = _read_env_key("ROBOFLOW_API_KEY")
+    gemini_api_key = _read_env_key("GEMINI_API_KEY")
 
-    if not api_key:
-        print("[ERROR] Chua co ROBOFLOW_API_KEY.")
-        print("  Cach 1: tao file .env voi noi dung: ROBOFLOW_API_KEY=key_cua_ban")
-        print("  Cach 2: $env:ROBOFLOW_API_KEY='key_cua_ban'")
+    if detect_engine == "roboflow" and not roboflow_api_key:
+        print("[ERROR] Chua co ROBOFLOW_API_KEY cho detect-engine roboflow.")
+        print("  Tao file .env voi noi dung: ROBOFLOW_API_KEY=key_cua_ban")
+        return
+
+    if ocr_engine == "roboflow" and not roboflow_api_key:
+        print("[ERROR] Chua co ROBOFLOW_API_KEY cho ocr-engine roboflow.")
+        print("  Tao file .env voi noi dung: ROBOFLOW_API_KEY=key_cua_ban")
+        return
+
+    if ocr_engine == "gemini":
+        print("[WARN] --ocr gemini khong con duoc dung lam OCR chinh; chuyen sang fallback Gemini.")
+        ocr_engine = "roboflow"
+        fallback_ocr_engine = "gemini"
+
+    if fallback_ocr_engine == "auto":
+        fallback_ocr_engine = "gemini" if gemini_api_key else "none"
+
+    if fallback_ocr_engine == "gemini" and not gemini_api_key:
+        print("[ERROR] Chua co GEMINI_API_KEY cho fallback Gemini.")
+        print("  Tao file .env voi noi dung: GEMINI_API_KEY=key_cua_ban")
         return
 
     # Tao pipeline
     pipeline = LicensePlatePipeline(
         plate_model_path="models/plate_detector.pt",
         char_conf=char_conf,
-        ocr_engine="roboflow",
+        ocr_engine=ocr_engine,
         detect_engine=detect_engine,
-        roboflow_api_key=api_key
+        roboflow_api_key=roboflow_api_key,
+        gemini_api_key=gemini_api_key,
+        fallback_ocr_engine=fallback_ocr_engine
     )
 
     # Chay pipeline
@@ -104,6 +137,7 @@ if __name__ == "__main__":
         print("  py run.py input/test.jpg --conf 0.15")
         print("  py run.py input/test.jpg --no-show")
         print("  py run.py input/test.jpg --detect yolo")
+        print("  py run.py input/test.jpg --fallback gemini")
         sys.exit(1)
 
     img = sys.argv[1]
@@ -125,4 +159,25 @@ if __name__ == "__main__":
         if idx + 1 < len(sys.argv):
             det_engine = sys.argv[idx + 1]
 
-    run(img, char_conf=conf, show=show, detect_engine=det_engine)
+    # Parse --ocr
+    ocr_engine = "roboflow"
+    if "--ocr" in sys.argv:
+        idx = sys.argv.index("--ocr")
+        if idx + 1 < len(sys.argv):
+            ocr_engine = sys.argv[idx + 1]
+
+    # Parse --fallback
+    fallback_ocr_engine = "auto"
+    if "--fallback" in sys.argv:
+        idx = sys.argv.index("--fallback")
+        if idx + 1 < len(sys.argv):
+            fallback_ocr_engine = sys.argv[idx + 1]
+
+    run(
+        img,
+        char_conf=conf,
+        show=show,
+        detect_engine=det_engine,
+        ocr_engine=ocr_engine,
+        fallback_ocr_engine=fallback_ocr_engine,
+    )
