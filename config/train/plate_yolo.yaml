@@ -1,0 +1,9 @@
+# Cau hinh train YOLO detect vung bien so xe.
+# Label bang labelImg voi class duy nhat: plate.
+model: yolov8n.pt
+data: data/plate_detection/data.yaml
+imgsz: 640
+epochs: 100
+batch: 16
+project: experiments/plate_yolo
+name: v1

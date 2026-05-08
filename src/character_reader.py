@@ -231,6 +231,7 @@ class CharacterReader:
             "6": "G",   # 6 giong G
             "1": "T",   # 1 giong T (it gap)
             "2": "Z",   # 2 giong Z (it gap)
+            "3": "C",   # 3 giong C (gap voi bien CD/NG/NN dac biet)
             "5": "S",   # 5 giong S (it gap)
         }
 

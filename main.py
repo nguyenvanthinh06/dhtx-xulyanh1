@@ -32,7 +32,17 @@ def main():
 
     # --- Tham so engine ---
     parser.add_argument("--ocr-engine", choices=["roboflow", "yolo"], default="roboflow",
-                        help="Engine OCR ky tu: roboflow (API) hoac yolo (local)")
+                        help="Engine OCR chinh: roboflow hoac yolo")
+    parser.add_argument("--fallback-ocr-engine", choices=["none", "gemini", "yolo"], default="none",
+                        help="OCR fallback, chi dung khi OCR chinh sai/empty hoac khong detect duoc bien")
+    parser.add_argument("--fallback-min-plate-score", type=float, default=0.35,
+                        help="Dung fallback neu confidence detect bien thap hon nguong nay")
+    parser.add_argument("--fallback-detect-engine", choices=["none", "yolo"], default="none",
+                        help="Detector fallback, vi du model YOLO vua train khi detector chinh khong thay bien")
+    parser.add_argument("--fallback-plate-model", default=None,
+                        help="Model YOLO detector fallback vua train, vi du models/plate_detector_v2.pt")
+    parser.add_argument("--fallback-char-model", default=None,
+                        help="Model YOLO OCR fallback vua train, vi du models/char_detector.pt")
     parser.add_argument("--detect-engine", choices=["roboflow", "yolo"], default="roboflow",
                         help="Engine detect bien so: roboflow (chinh xac hon) hoac yolo (nhanh hon)")
 
@@ -46,7 +56,13 @@ def main():
     parser.add_argument("--roboflow-api-url", default="https://detect.roboflow.com",
                         help="URL API Roboflow")
     parser.add_argument("--roboflow-timeout", type=float, default=30.0,
-                        help="Timeout request Roboflow (giay)")
+                        help="Timeout request Roboflow/Gemini (giay)")
+    parser.add_argument("--gemini-api-key", default=None,
+                        help="API key Gemini (hoac dung bien moi truong GEMINI_API_KEY)")
+    parser.add_argument("--gemini-model-id", default="gemini-2.5-flash",
+                        help="Model Gemini Vision dung de doc bien so")
+    parser.add_argument("--gemini-api-url", default="https://generativelanguage.googleapis.com/v1beta",
+                        help="URL API Gemini")
 
     # --- Config ---
     parser.add_argument("--config", default="config/plate_rules.yaml",
@@ -68,6 +84,14 @@ def main():
         roboflow_detect_model_id=args.roboflow_detect_model_id,
         roboflow_api_url=args.roboflow_api_url,
         roboflow_timeout=args.roboflow_timeout,
+        gemini_api_key=args.gemini_api_key,
+        gemini_model_id=args.gemini_model_id,
+        gemini_api_url=args.gemini_api_url,
+        fallback_ocr_engine=args.fallback_ocr_engine,
+        fallback_min_plate_score=args.fallback_min_plate_score,
+        fallback_detect_engine=args.fallback_detect_engine,
+        fallback_plate_model_path=args.fallback_plate_model,
+        fallback_char_model_path=args.fallback_char_model,
     )
 
     # === Chay Pipeline ===
