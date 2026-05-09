@@ -109,6 +109,9 @@ def process_with_pipeline(args: argparse.Namespace, image_path: Path) -> list[di
         gemini_api_url=args.gemini_api_url,
         fallback_ocr_engine=args.fallback_ocr_engine,
         fallback_min_plate_score=args.fallback_min_plate_score,
+        fallback_detect_engine=args.fallback_detect_engine,
+        fallback_plate_model_path=args.fallback_plate_model,
+        fallback_char_model_path=args.fallback_char_model,
     )
     _, results = pipeline.process_image(str(image_path))
     return results
@@ -225,13 +228,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=None, help="Giới hạn số ảnh để smoke test")
     parser.add_argument("--detect-engine", choices=["roboflow", "yolo"], default="roboflow")
     parser.add_argument("--ocr-engine", choices=["roboflow", "yolo", "none"], default="roboflow")
-    parser.add_argument("--fallback-ocr-engine", choices=["none", "gemini"], default="none")
+    parser.add_argument("--fallback-ocr-engine", choices=["none", "gemini", "yolo"], default="none")
+    parser.add_argument("--fallback-detect-engine", choices=["none", "yolo"], default="none")
     parser.add_argument("--plate-model", default="models/plate_detector.pt")
     parser.add_argument("--char-model", default=None)
     parser.add_argument("--plate-conf", type=float, default=0.25)
     parser.add_argument("--char-conf", type=float, default=0.25)
     parser.add_argument("--min-audit-score", type=float, default=0.35)
     parser.add_argument("--fallback-min-plate-score", type=float, default=0.35)
+    parser.add_argument("--fallback-plate-model", default=None)
+    parser.add_argument("--fallback-char-model", default=None)
     parser.add_argument("--config", default="config/plate_rules.yaml")
     parser.add_argument("--roboflow-api-key", default=None)
     parser.add_argument("--roboflow-model-id", default="license-plate-ocr-hugcj/3")

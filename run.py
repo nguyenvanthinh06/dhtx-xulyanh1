@@ -6,7 +6,7 @@
 #   py run.py input/test.jpg --conf 0.15
 #   py run.py input/test.jpg --no-show
 #   py run.py input/test.jpg --detect yolo     (dung YOLO local cho detect)
-#   py run.py input/test.jpg --fallback gemini  (chi dung Gemini khi OCR sai/empty)
+#   py run.py input/test.jpg             (auto: model hien tai -> model moi train -> Gemini)
 
 import sys
 import os
@@ -37,7 +37,11 @@ def run(
     show: bool = True,
     detect_engine: str = "roboflow",
     ocr_engine: str = "roboflow",
-    fallback_ocr_engine: str = "auto"
+    fallback_ocr_engine: str = "auto",
+    fallback_detect_engine: str = "auto",
+    plate_model_path: str = "models/plate_detector.pt",
+    trained_plate_model_path: str = "models/plate_detector_v2.pt",
+    char_model_path: str = "models/char_detector.pt"
 ):
     """
     Xu ly 1 anh va hien thi ket qua.
@@ -49,6 +53,7 @@ def run(
         detect_engine: "roboflow" (chinh xac) hoac "yolo" (nhanh, offline)
         ocr_engine: OCR chinh, "roboflow" hoac "yolo"
         fallback_ocr_engine: "auto", "none" hoac "gemini"; Gemini chi chay khi OCR chinh dang nghi
+        fallback_detect_engine: "auto", "none" hoac "yolo"; auto se thu model moi train neu file ton tai
     """
 
     # Kiem tra file anh
@@ -79,8 +84,27 @@ def run(
         ocr_engine = "roboflow"
         fallback_ocr_engine = "gemini"
 
+    if ocr_engine == "yolo" and not os.path.isfile(char_model_path):
+        print(f"[ERROR] Khong tim thay char model cho OCR chinh: {char_model_path}")
+        return
+
     if fallback_ocr_engine == "auto":
-        fallback_ocr_engine = "gemini" if gemini_api_key else "none"
+        if os.path.isfile(char_model_path):
+            fallback_ocr_engine = "yolo"
+        elif gemini_api_key:
+            fallback_ocr_engine = "gemini"
+        else:
+            fallback_ocr_engine = "none"
+
+    if fallback_detect_engine == "auto":
+        fallback_detect_engine = "yolo" if os.path.isfile(trained_plate_model_path) else "none"
+
+    use_yolo_ocr = ocr_engine == "yolo" or (
+        fallback_ocr_engine == "yolo" and os.path.isfile(char_model_path)
+    )
+    if use_yolo_ocr and not os.path.isfile(char_model_path):
+        print(f"[ERROR] Khong tim thay char model: {char_model_path}")
+        return
 
     if fallback_ocr_engine == "gemini" and not gemini_api_key:
         print("[ERROR] Chua co GEMINI_API_KEY cho fallback Gemini.")
@@ -89,13 +113,17 @@ def run(
 
     # Tao pipeline
     pipeline = LicensePlatePipeline(
-        plate_model_path="models/plate_detector.pt",
+        plate_model_path=plate_model_path,
+        char_model_path=char_model_path if os.path.isfile(char_model_path) else None,
         char_conf=char_conf,
         ocr_engine=ocr_engine,
         detect_engine=detect_engine,
         roboflow_api_key=roboflow_api_key,
         gemini_api_key=gemini_api_key,
-        fallback_ocr_engine=fallback_ocr_engine
+        fallback_ocr_engine=fallback_ocr_engine,
+        fallback_detect_engine=fallback_detect_engine,
+        fallback_plate_model_path=trained_plate_model_path,
+        fallback_char_model_path=char_model_path if os.path.isfile(char_model_path) else None
     )
 
     # Chay pipeline
@@ -137,7 +165,8 @@ if __name__ == "__main__":
         print("  py run.py input/test.jpg --conf 0.15")
         print("  py run.py input/test.jpg --no-show")
         print("  py run.py input/test.jpg --detect yolo")
-        print("  py run.py input/test.jpg --fallback gemini")
+        print("  py run.py input/test.jpg")
+        print("  py run.py input/test.jpg --trained-plate-model models/plate_detector_v2.pt")
         sys.exit(1)
 
     img = sys.argv[1]
@@ -173,6 +202,31 @@ if __name__ == "__main__":
         if idx + 1 < len(sys.argv):
             fallback_ocr_engine = sys.argv[idx + 1]
 
+    # Parse fallback detector / model paths
+    fallback_detect_engine = "auto"
+    if "--fallback-detect" in sys.argv:
+        idx = sys.argv.index("--fallback-detect")
+        if idx + 1 < len(sys.argv):
+            fallback_detect_engine = sys.argv[idx + 1]
+
+    plate_model_path = "models/plate_detector.pt"
+    if "--plate-model" in sys.argv:
+        idx = sys.argv.index("--plate-model")
+        if idx + 1 < len(sys.argv):
+            plate_model_path = sys.argv[idx + 1]
+
+    trained_plate_model_path = "models/plate_detector_v2.pt"
+    if "--trained-plate-model" in sys.argv:
+        idx = sys.argv.index("--trained-plate-model")
+        if idx + 1 < len(sys.argv):
+            trained_plate_model_path = sys.argv[idx + 1]
+
+    char_model_path = "models/char_detector.pt"
+    if "--char-model" in sys.argv:
+        idx = sys.argv.index("--char-model")
+        if idx + 1 < len(sys.argv):
+            char_model_path = sys.argv[idx + 1]
+
     run(
         img,
         char_conf=conf,
@@ -180,4 +234,8 @@ if __name__ == "__main__":
         detect_engine=det_engine,
         ocr_engine=ocr_engine,
         fallback_ocr_engine=fallback_ocr_engine,
+        fallback_detect_engine=fallback_detect_engine,
+        plate_model_path=plate_model_path,
+        trained_plate_model_path=trained_plate_model_path,
+        char_model_path=char_model_path,
     )

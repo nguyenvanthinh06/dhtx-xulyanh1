@@ -33,10 +33,16 @@ def main():
     # --- Tham so engine ---
     parser.add_argument("--ocr-engine", choices=["roboflow", "yolo"], default="roboflow",
                         help="Engine OCR chinh: roboflow hoac yolo")
-    parser.add_argument("--fallback-ocr-engine", choices=["none", "gemini"], default="none",
+    parser.add_argument("--fallback-ocr-engine", choices=["none", "gemini", "yolo"], default="none",
                         help="OCR fallback, chi dung khi OCR chinh sai/empty hoac khong detect duoc bien")
     parser.add_argument("--fallback-min-plate-score", type=float, default=0.35,
                         help="Dung fallback neu confidence detect bien thap hon nguong nay")
+    parser.add_argument("--fallback-detect-engine", choices=["none", "yolo"], default="none",
+                        help="Detector fallback, vi du model YOLO vua train khi detector chinh khong thay bien")
+    parser.add_argument("--fallback-plate-model", default=None,
+                        help="Model YOLO detector fallback vua train, vi du models/plate_detector_v2.pt")
+    parser.add_argument("--fallback-char-model", default=None,
+                        help="Model YOLO OCR fallback vua train, vi du models/char_detector.pt")
     parser.add_argument("--detect-engine", choices=["roboflow", "yolo"], default="roboflow",
                         help="Engine detect bien so: roboflow (chinh xac hon) hoac yolo (nhanh hon)")
 
@@ -83,6 +89,9 @@ def main():
         gemini_api_url=args.gemini_api_url,
         fallback_ocr_engine=args.fallback_ocr_engine,
         fallback_min_plate_score=args.fallback_min_plate_score,
+        fallback_detect_engine=args.fallback_detect_engine,
+        fallback_plate_model_path=args.fallback_plate_model,
+        fallback_char_model_path=args.fallback_char_model,
     )
 
     # === Chay Pipeline ===

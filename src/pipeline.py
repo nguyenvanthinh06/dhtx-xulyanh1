@@ -46,12 +46,15 @@ class LicensePlatePipeline:
         gemini_api_url: str = "https://generativelanguage.googleapis.com/v1beta",
         fallback_ocr_engine: str = "none",
         fallback_min_plate_score: float = 0.35,
+        fallback_detect_engine: str = "none",
+        fallback_plate_model_path: Optional[str] = None,
+        fallback_char_model_path: Optional[str] = None,
     ):
         # Lay API key: uu tien tu tham so, sau do doc bien moi truong
         api_key = roboflow_api_key or os.getenv("ROBOFLOW_API_KEY")
         gemini_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
 
-        # === Tao Plate Detector ===
+        # === Tao Plate Detector chinh ===
         self.plate_detector = PlateDetector(
             model_path=plate_model_path,
             conf=plate_conf,
@@ -61,6 +64,19 @@ class LicensePlatePipeline:
             roboflow_api_url=roboflow_api_url,
             roboflow_timeout=roboflow_timeout
         )
+
+        self.fallback_detector = None
+        fallback_detect_engine = fallback_detect_engine.lower()
+        if fallback_detect_engine not in {"none", ""}:
+            self.fallback_detector = PlateDetector(
+                model_path=fallback_plate_model_path or plate_model_path,
+                conf=plate_conf,
+                engine=fallback_detect_engine,
+                roboflow_api_key=api_key,
+                roboflow_model_id=roboflow_detect_model_id,
+                roboflow_api_url=roboflow_api_url,
+                roboflow_timeout=roboflow_timeout
+            )
 
         self.fallback_min_plate_score = fallback_min_plate_score
 
@@ -82,7 +98,7 @@ class LicensePlatePipeline:
         # === Tao OCR fallback (chi goi khi OCR chinh sai/empty hoac khong detect duoc bien) ===
         self.fallback_ocr = self._build_ocr(
             ocr_engine=fallback_ocr_engine,
-            char_model_path=char_model_path,
+            char_model_path=fallback_char_model_path or char_model_path,
             conf=char_conf,
             config_path=config_path,
             roboflow_api_key=api_key,
@@ -248,8 +264,13 @@ class LicensePlatePipeline:
         h, w = image.shape[:2]
         print(f"[Pipeline] Image loaded: {image_path} ({w}x{h})")
 
-        # === Buoc 1: Detect vung bien so ===
+        # === Buoc 1: Detect vung bien so bang detector chinh ===
         plates = self.plate_detector.detect(image)
+
+        # Neu detector chinh khong thay bien, thu detector fallback da train.
+        if not plates and self.fallback_detector is not None:
+            print("[Pipeline] Primary detector found no plate; trying fallback detector")
+            plates = self.fallback_detector.detect(image)
 
         results = []
 

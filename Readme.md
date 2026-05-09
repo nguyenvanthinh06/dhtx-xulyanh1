@@ -123,3 +123,37 @@ Nếu muốn chỉ kiểm tra detect vùng biển và chưa gọi OCR:
 ```powershell
 python tools/audit_input_folder.py --input-dir input --ocr-engine none
 ```
+
+## Training với `input-not-detect`
+
+Workflow training đã được scaffold trong repo:
+
+- Label vùng biển bằng `labelImg` với class file `data/labelimg_classes/plate_classes.txt`.
+- Train detector YOLO bằng `config/train/plate_yolo.yaml`.
+- Crop biển từ label detector bằng `scripts/dataset/crop_plates_from_yolo.py`.
+- Label từng ký tự OCR theo hướng A bằng `data/labelimg_classes/char_classes.txt`.
+- Train OCR YOLO character detector bằng `config/train/char_yolo.yaml`.
+- Chạy pipeline với YOLO detector + YOLO OCR và Gemini chỉ làm fallback.
+
+Xem hướng dẫn chi tiết tại `docs/training_workflow.md`.
+
+## Lenh chay sau khi train xong
+
+Sau khi hoan thanh label/train va copy model moi vao `models/plate_detector_v2.pt` (detector) va `models/char_detector.pt` (OCR ky tu), ban van co the chay mot lenh don gian nhu cu:
+
+```powershell
+py run.py input/f-1740160764017-693062374.jpg
+```
+
+Thu tu xu ly mac dinh cua `run.py`:
+
+1. Dung detector hien tai `models/plate_detector.pt` va OCR Roboflow.
+2. Neu detector hien tai khong thay bien va ton tai `models/plate_detector_v2.pt`, thu lai bang detector vua train.
+3. Neu OCR chinh rong/sai format/confidence thap va ton tai `models/char_detector.pt`, thu lai OCR bang model ky tu vua train.
+4. Neu van khong co ket qua tot va co `GEMINI_API_KEY`, moi goi Gemini fallback.
+
+Neu muon chi ro duong dan model:
+
+```powershell
+py run.py input/f-1740160764017-693062374.jpg --trained-plate-model models/plate_detector_v2.pt --char-model models/char_detector.pt
+```

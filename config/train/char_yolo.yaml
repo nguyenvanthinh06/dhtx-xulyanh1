@@ -1,0 +1,9 @@
+# Cau hinh train YOLO OCR huong A: detect tung ky tu tren crop bien so.
+# Khong label dau '-' hoac '.', chi label cac ky tu thuc te.
+model: yolov8n.pt
+data: data/char_detection/data.yaml
+imgsz: 320
+epochs: 150
+batch: 32
+project: experiments/char_yolo
+name: v1
