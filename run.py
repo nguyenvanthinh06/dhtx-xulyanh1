@@ -43,9 +43,9 @@ def run(
     show: bool = True,
     detect_engine: str = "yolo",
     ocr_engine: str = "yolo",
-    fallback_ocr_engine: str = "none",
+    fallback_ocr_engine: str = "auto",
     fallback_detect_engine: str = "none",
-    final_fallback_ocr_engine: str = "none",
+    final_fallback_ocr_engine: str = "auto",
     plate_model_path: str = "models/plate_detector_v2.pt",
     fallback_plate_model_path: str = "models/plate_detector.pt",
     char_model_path: str = "models/char_detector.pt",
@@ -88,21 +88,37 @@ def run(
         return
 
     if ocr_engine == "gemini":
-        print("[WARN] --ocr gemini khong con duoc dung lam OCR chinh; chuyen sang fallback Gemini.")
-        ocr_engine = "roboflow"
-        fallback_ocr_engine = "gemini"
+        print("[WARN] --ocr gemini khong con duoc dung lam OCR chinh; chuyen sang final fallback Gemini.")
+        if os.path.isfile(char_model_path):
+            ocr_engine = "yolo"
+        elif roboflow_api_key:
+            ocr_engine = "roboflow"
+        else:
+            ocr_engine = "gemini"
+        final_fallback_ocr_engine = "gemini"
 
+    explicit_fallback_ocr_engine = fallback_ocr_engine
+    explicit_final_fallback_ocr_engine = final_fallback_ocr_engine
 
     if fallback_ocr_engine == "auto":
-        if os.path.isfile(char_model_path):
-            fallback_ocr_engine = "yolo"
-        elif gemini_api_key:
+        if ocr_engine != "roboflow" and roboflow_api_key:
+            fallback_ocr_engine = "roboflow"
+            print("[INFO] Fallback OCR: RoboflowCharacterOCR (auto)")
+        elif ocr_engine != "gemini" and gemini_api_key:
             fallback_ocr_engine = "gemini"
+            print("[INFO] Fallback OCR: Gemini (auto, Roboflow key missing)")
         else:
             fallback_ocr_engine = "none"
+            print("[WARN] Fallback OCR disabled: missing ROBOFLOW_API_KEY/GEMINI_API_KEY")
 
     if final_fallback_ocr_engine == "auto":
-        final_fallback_ocr_engine = "gemini" if gemini_api_key else "none"
+        if fallback_ocr_engine != "gemini" and ocr_engine != "gemini" and gemini_api_key:
+            final_fallback_ocr_engine = "gemini"
+            print("[INFO] Final fallback OCR: Gemini (auto)")
+        else:
+            final_fallback_ocr_engine = "none"
+            if not gemini_api_key:
+                print("[WARN] Final fallback OCR disabled: missing GEMINI_API_KEY")
 
     if fallback_detect_engine == "auto":
         fallback_detect_engine = "yolo" if os.path.isfile(fallback_plate_model_path) else "none"
@@ -112,20 +128,46 @@ def run(
         if roboflow_api_key:
             print("  -> Tu dong chuyen OCR chinh sang Roboflow do chua co model YOLO.")
             ocr_engine = "roboflow"
+        elif gemini_api_key:
+            print("  -> Tu dong chuyen OCR chinh sang Gemini do chua co YOLO/Roboflow.")
+            ocr_engine = "gemini"
+            fallback_ocr_engine = "none"
+            final_fallback_ocr_engine = "none"
         else:
-            print("  -> Khong co ROBOFLOW_API_KEY de fallback. Hay copy model vao models/char_detector.pt")
+            print("  -> Khong co ROBOFLOW_API_KEY/GEMINI_API_KEY de fallback. Hay copy model vao models/char_detector.pt")
             print("     hoac truyen --char-model <duong_dan_best.pt>.")
             return
 
+    if fallback_ocr_engine == ocr_engine:
+        print(f"[WARN] Fallback OCR '{fallback_ocr_engine}' trung OCR chinh; bo qua fallback trung lap.")
+        fallback_ocr_engine = "none"
+
+    if fallback_ocr_engine == "roboflow" and not roboflow_api_key:
+        if explicit_fallback_ocr_engine == "auto":
+            fallback_ocr_engine = "none"
+            print("[WARN] Roboflow fallback disabled: missing ROBOFLOW_API_KEY")
+        else:
+            print("[ERROR] Chua co ROBOFLOW_API_KEY cho fallback Roboflow.")
+            print("  Tao file .env voi noi dung: ROBOFLOW_API_KEY=key_cua_ban")
+            return
+
     if fallback_ocr_engine == "gemini" and not gemini_api_key:
-        print("[ERROR] Chua co GEMINI_API_KEY cho fallback Gemini.")
-        print("  Tao file .env voi noi dung: GEMINI_API_KEY=key_cua_ban")
-        return
+        if explicit_fallback_ocr_engine == "auto":
+            fallback_ocr_engine = "none"
+            print("[WARN] Gemini fallback disabled: missing GEMINI_API_KEY")
+        else:
+            print("[ERROR] Chua co GEMINI_API_KEY cho fallback Gemini.")
+            print("  Tao file .env voi noi dung: GEMINI_API_KEY=key_cua_ban")
+            return
 
     if final_fallback_ocr_engine == "gemini" and not gemini_api_key:
-        print("[ERROR] Chua co GEMINI_API_KEY cho final fallback Gemini.")
-        print("  Tao file .env voi noi dung: GEMINI_API_KEY=key_cua_ban")
-        return
+        if explicit_final_fallback_ocr_engine == "auto":
+            final_fallback_ocr_engine = "none"
+            print("[WARN] Gemini final fallback disabled: missing GEMINI_API_KEY")
+        else:
+            print("[ERROR] Chua co GEMINI_API_KEY cho final fallback Gemini.")
+            print("  Tao file .env voi noi dung: GEMINI_API_KEY=key_cua_ban")
+            return
 
     # Tao pipeline
     pipeline = LicensePlatePipeline(
@@ -160,9 +202,15 @@ def run(
         print("  Khong detect duoc bien so nao.")
     else:
         for i, item in enumerate(results, 1):
-            print(f"  Bien so {i}: {item['text']}")
+            text = item.get("text", "")
+            display_text = text if text.strip() else "<OCR_EMPTY>"
+            print(f"  Bien so {i}: {display_text}")
             print(f"  Score:     {item['score']:.2f}")
             print(f"  Box:       {item['box']}")
+            if item.get("ocr_source"):
+                print(f"  OCR:       {item['ocr_source']}")
+            if not text.strip():
+                print("  Trang thai: detect_duoc_vung_bien_nhung_ocr_rong")
             if i < len(results):
                 print("-" * 50)
 
@@ -227,6 +275,7 @@ if __name__ == "__main__":
         print("  py run.py input/test.jpg --no-show")
         print("  py run.py input/test.jpg --detect yolo")
         print("  py run.py input/test.jpg --debug-chars")
+        print("  py run.py input/test.jpg --fallback roboflow --final-fallback gemini")
         print("  py run.py input/test.jpg")
         print("  py run.py input-not-detect")
         print("  py run.py input/test.jpg --plate-model models/plate_detector_v2.pt")
@@ -259,7 +308,7 @@ if __name__ == "__main__":
             ocr_engine = sys.argv[idx + 1]
 
     # Parse --fallback
-    fallback_ocr_engine = "none"
+    fallback_ocr_engine = "auto"
     if "--fallback" in sys.argv:
         idx = sys.argv.index("--fallback")
         if idx + 1 < len(sys.argv):
@@ -273,7 +322,7 @@ if __name__ == "__main__":
             fallback_detect_engine = sys.argv[idx + 1]
 
     # Parse final fallback
-    final_fallback_ocr_engine = "none"
+    final_fallback_ocr_engine = "auto"
     if "--final-fallback" in sys.argv:
         idx = sys.argv.index("--final-fallback")
         if idx + 1 < len(sys.argv):
