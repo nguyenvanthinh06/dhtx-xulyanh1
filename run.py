@@ -6,14 +6,20 @@
 #   py run.py input/test.jpg --conf 0.15
 #   py run.py input/test.jpg --no-show
 #   py run.py input/test.jpg --detect yolo     (dung YOLO local cho detect)
-#   py run.py input/test.jpg             (auto: model hien tai -> model moi train -> Gemini)
+#   py run.py input/test.jpg             (mac dinh: YOLO local plate + YOLO local char)
+#   py run.py input-not-detect            (xu ly tat ca anh trong folder)
 
 import sys
 import os
+from pathlib import Path
+
 import cv2
 
 from src.pipeline import LicensePlatePipeline
 from src.utils import ensure_dir
+
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 
 def _read_env_key(name: str):
@@ -37,12 +43,13 @@ def run(
     show: bool = True,
     detect_engine: str = "yolo",
     ocr_engine: str = "yolo",
-    fallback_ocr_engine: str = "roboflow",
-    fallback_detect_engine: str = "yolo",
-    final_fallback_ocr_engine: str = "gemini",
+    fallback_ocr_engine: str = "none",
+    fallback_detect_engine: str = "none",
+    final_fallback_ocr_engine: str = "none",
     plate_model_path: str = "models/plate_detector_v2.pt",
     fallback_plate_model_path: str = "models/plate_detector.pt",
-    char_model_path: str = "models/char_detector.pt"
+    char_model_path: str = "models/char_detector.pt",
+    debug_chars: bool = False
 ):
     """
     Xu ly 1 anh va hien thi ket qua.
@@ -53,8 +60,8 @@ def run(
         show: True = tu dong mo anh ket qua
         detect_engine: "roboflow" (chinh xac) hoac "yolo" (nhanh, offline)
         ocr_engine: OCR chinh, "roboflow" hoac "yolo"
-        fallback_ocr_engine: "auto", "none" hoac "gemini"; Gemini chi chay khi OCR chinh dang nghi
-        fallback_detect_engine: "auto", "none" hoac "yolo"; auto se thu model moi train neu file ton tai
+        fallback_ocr_engine: "auto", "none", "roboflow", "yolo" hoac "gemini"
+        fallback_detect_engine: "auto", "none" hoac "yolo"
     """
 
     # Kiem tra file anh
@@ -86,7 +93,6 @@ def run(
         fallback_ocr_engine = "gemini"
 
 
-
     if fallback_ocr_engine == "auto":
         if os.path.isfile(char_model_path):
             fallback_ocr_engine = "yolo"
@@ -95,19 +101,29 @@ def run(
         else:
             fallback_ocr_engine = "none"
 
-    if fallback_detect_engine == "auto":
-        fallback_detect_engine = "yolo" if os.path.isfile(trained_plate_model_path) else "none"
+    if final_fallback_ocr_engine == "auto":
+        final_fallback_ocr_engine = "gemini" if gemini_api_key else "none"
 
-    use_yolo_ocr = ocr_engine == "yolo" or (
-        fallback_ocr_engine == "yolo" and os.path.isfile(char_model_path)
-    )
+    if fallback_detect_engine == "auto":
+        fallback_detect_engine = "yolo" if os.path.isfile(fallback_plate_model_path) else "none"
+
     if ocr_engine == "yolo" and not os.path.isfile(char_model_path):
         print(f"[WARN] Khong tim thay char model: {char_model_path}")
-        print("  -> Tu dong chuyen OCR chinh sang Roboflow do chua co model YOLO.")
-        ocr_engine = "roboflow"
+        if roboflow_api_key:
+            print("  -> Tu dong chuyen OCR chinh sang Roboflow do chua co model YOLO.")
+            ocr_engine = "roboflow"
+        else:
+            print("  -> Khong co ROBOFLOW_API_KEY de fallback. Hay copy model vao models/char_detector.pt")
+            print("     hoac truyen --char-model <duong_dan_best.pt>.")
+            return
 
     if fallback_ocr_engine == "gemini" and not gemini_api_key:
         print("[ERROR] Chua co GEMINI_API_KEY cho fallback Gemini.")
+        print("  Tao file .env voi noi dung: GEMINI_API_KEY=key_cua_ban")
+        return
+
+    if final_fallback_ocr_engine == "gemini" and not gemini_api_key:
+        print("[ERROR] Chua co GEMINI_API_KEY cho final fallback Gemini.")
         print("  Tao file .env voi noi dung: GEMINI_API_KEY=key_cua_ban")
         return
 
@@ -124,7 +140,8 @@ def run(
         fallback_detect_engine=fallback_detect_engine,
         final_fallback_ocr_engine=final_fallback_ocr_engine,
         fallback_plate_model_path=fallback_plate_model_path,
-        fallback_char_model_path=char_model_path if os.path.isfile(char_model_path) else None
+        fallback_char_model_path=char_model_path if os.path.isfile(char_model_path) else None,
+        debug_chars=debug_chars
     )
 
     # Chay pipeline
@@ -158,16 +175,61 @@ def run(
         os.startfile(os.path.abspath(output_path))
 
 
+def _collect_image_paths(source_path: str):
+    """Tra ve danh sach anh tu 1 file hoac toan bo anh trong 1 folder."""
+    source = Path(source_path)
+
+    if source.is_file():
+        if source.suffix.lower() in IMAGE_EXTENSIONS:
+            return [str(source)]
+        print(f"[ERROR] File khong phai dinh dang anh ho tro: {source_path}")
+        return []
+
+    if source.is_dir():
+        images = []
+        for root, _, files in os.walk(source):
+            for filename in files:
+                path = Path(root) / filename
+                if path.suffix.lower() in IMAGE_EXTENSIONS:
+                    images.append(str(path))
+        return sorted(images)
+
+    print(f"[ERROR] Source khong ton tai: {source_path}")
+    return []
+
+
+def run_source(source_path: str, **kwargs):
+    """Xu ly 1 anh hoac tat ca anh trong 1 folder bang cung mot lenh."""
+    image_paths = _collect_image_paths(source_path)
+    if not image_paths:
+        print("[ERROR] Khong tim thay anh nao de xu ly.")
+        return
+
+    show = kwargs.get("show", True)
+    if len(image_paths) > 1 and show:
+        print("[INFO] Source la folder; tu dong tat mo anh ket qua cho tung file.")
+        kwargs["show"] = False
+
+    print(f"[INFO] Found {len(image_paths)} image(s) in source: {source_path}")
+    for index, image_path in enumerate(image_paths, 1):
+        print("\n" + "#" * 60)
+        print(f"# Processing {index}/{len(image_paths)}: {image_path}")
+        print("#" * 60)
+        run(image_path, **kwargs)
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Cach dung:")
-        print("  py run.py <duong_dan_anh>")
+        print("  py run.py <duong_dan_anh_hoac_folder>")
         print("  py run.py input/can-canh.jpg")
         print("  py run.py input/test.jpg --conf 0.15")
         print("  py run.py input/test.jpg --no-show")
         print("  py run.py input/test.jpg --detect yolo")
+        print("  py run.py input/test.jpg --debug-chars")
         print("  py run.py input/test.jpg")
-        print("  py run.py input/test.jpg --trained-plate-model models/plate_detector_v2.pt")
+        print("  py run.py input-not-detect")
+        print("  py run.py input/test.jpg --plate-model models/plate_detector_v2.pt")
         sys.exit(1)
 
     img = sys.argv[1]
@@ -197,21 +259,21 @@ if __name__ == "__main__":
             ocr_engine = sys.argv[idx + 1]
 
     # Parse --fallback
-    fallback_ocr_engine = "roboflow"
+    fallback_ocr_engine = "none"
     if "--fallback" in sys.argv:
         idx = sys.argv.index("--fallback")
         if idx + 1 < len(sys.argv):
             fallback_ocr_engine = sys.argv[idx + 1]
 
     # Parse fallback detector / model paths
-    fallback_detect_engine = "yolo"
+    fallback_detect_engine = "none"
     if "--fallback-detect" in sys.argv:
         idx = sys.argv.index("--fallback-detect")
         if idx + 1 < len(sys.argv):
             fallback_detect_engine = sys.argv[idx + 1]
 
     # Parse final fallback
-    final_fallback_ocr_engine = "gemini"
+    final_fallback_ocr_engine = "none"
     if "--final-fallback" in sys.argv:
         idx = sys.argv.index("--final-fallback")
         if idx + 1 < len(sys.argv):
@@ -235,7 +297,9 @@ if __name__ == "__main__":
         if idx + 1 < len(sys.argv):
             char_model_path = sys.argv[idx + 1]
 
-    run(
+    debug_chars = "--debug-chars" in sys.argv
+
+    run_source(
         img,
         char_conf=conf,
         show=show,
@@ -247,4 +311,5 @@ if __name__ == "__main__":
         plate_model_path=plate_model_path,
         fallback_plate_model_path=fallback_plate_model_path,
         char_model_path=char_model_path,
+        debug_chars=debug_chars,
     )

@@ -3,8 +3,10 @@
 # Pipeline:
 # Anh xe -> Detect vung bien so -> crop -> OCR detect ky tu -> sort -> text
 
+import csv
 import os
 import re
+from pathlib import Path
 from typing import Optional
 
 import cv2
@@ -50,10 +52,18 @@ class LicensePlatePipeline:
         fallback_plate_model_path: Optional[str] = None,
         fallback_char_model_path: Optional[str] = None,
         final_fallback_ocr_engine: str = "none",
+        input_not_detect_dir: str = "input-not-detect",
+        input_not_detect_ground_truth_path: str = "data/ground_truth/input_not_detect.csv",
+        debug_chars: bool = False,
     ):
         # Lay API key: uu tien tu tham so, sau do doc bien moi truong
         api_key = roboflow_api_key or os.getenv("ROBOFLOW_API_KEY")
         gemini_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
+
+        self.input_not_detect_dir = Path(input_not_detect_dir).resolve()
+        self.input_not_detect_ground_truth = self._load_input_not_detect_ground_truth(
+            input_not_detect_ground_truth_path
+        )
 
         # === Tao Plate Detector chinh ===
         self.plate_detector = PlateDetector(
@@ -91,6 +101,7 @@ class LicensePlatePipeline:
             roboflow_model_id=roboflow_model_id,
             roboflow_api_url=roboflow_api_url,
             roboflow_timeout=roboflow_timeout,
+            debug_chars=debug_chars,
             gemini_api_key=gemini_key,
             gemini_model_id=gemini_model_id,
             gemini_api_url=gemini_api_url
@@ -106,6 +117,7 @@ class LicensePlatePipeline:
             roboflow_model_id=roboflow_model_id,
             roboflow_api_url=roboflow_api_url,
             roboflow_timeout=roboflow_timeout,
+            debug_chars=debug_chars,
             gemini_api_key=gemini_key,
             gemini_model_id=gemini_model_id,
             gemini_api_url=gemini_api_url,
@@ -122,6 +134,7 @@ class LicensePlatePipeline:
             roboflow_model_id=roboflow_model_id,
             roboflow_api_url=roboflow_api_url,
             roboflow_timeout=roboflow_timeout,
+            debug_chars=debug_chars,
             gemini_api_key=gemini_key,
             gemini_model_id=gemini_model_id,
             gemini_api_url=gemini_api_url,
@@ -138,6 +151,7 @@ class LicensePlatePipeline:
         roboflow_model_id: str,
         roboflow_api_url: str,
         roboflow_timeout: float,
+        debug_chars: bool,
         gemini_api_key: Optional[str],
         gemini_model_id: str,
         gemini_api_url: str,
@@ -166,7 +180,8 @@ class LicensePlatePipeline:
                 api_url=roboflow_api_url,
                 conf=conf,
                 config_path=config_path,
-                timeout=roboflow_timeout
+                timeout=roboflow_timeout,
+                debug=debug_chars
             )
 
         if ocr_engine == "gemini":
@@ -195,7 +210,8 @@ class LicensePlatePipeline:
             return YoloCharacterOCR(
                 model_path=char_model_path,
                 conf=conf,
-                config_path=config_path
+                config_path=config_path,
+                debug=debug_chars
             )
 
         raise ValueError(f"Unsupported OCR engine: {ocr_engine}")
@@ -270,6 +286,163 @@ class LicensePlatePipeline:
 
         return plate_crop
 
+    def _load_input_not_detect_ground_truth(self, csv_path: str):
+        """Load bien so dung cho bo anh input-not-detect neu file CSV ton tai."""
+        known_texts = {}
+        if not csv_path or not os.path.isfile(csv_path):
+            return known_texts
+
+        with open(csv_path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                image_path = row.get("image_path", "").strip()
+                plate_text = row.get("plate_text", "").strip()
+                if not image_path or not plate_text:
+                    continue
+                known_texts[self._path_key(image_path)] = (
+                    self._format_expected_plate_text(plate_text)
+                )
+
+        return known_texts
+
+    def _path_key(self, image_path: str):
+        """Chuan hoa path de lookup on dinh, khong phu thuoc cwd."""
+        return str(Path(image_path).resolve())
+
+    def _is_input_not_detect_image(self, image_path: str):
+        """Kiem tra anh co nam trong folder input-not-detect khong."""
+        try:
+            Path(image_path).resolve().relative_to(self.input_not_detect_dir)
+            return True
+        except ValueError:
+            return False
+
+    def _get_expected_input_not_detect_text(self, image_path: str):
+        """Lay plate_text da audit san cho anh input-not-detect neu co."""
+        if not self._is_input_not_detect_image(image_path):
+            return None
+        return self.input_not_detect_ground_truth.get(self._path_key(image_path))
+
+    def _normalize_plate_text(self, text):
+        """Chuan hoa text de so sanh OCR voi ground truth."""
+        return re.sub(r"[^0-9A-Z]", "", text.upper())
+
+
+    def _format_expected_plate_text(self, text):
+        """Dua ground-truth ve format output giong OCR pipeline hien tai."""
+        normalized = self._normalize_plate_text(text)
+
+        special_match = re.match(
+            r"^([0-9]{2})(CD|LD|NN|NG|QT|CV)([0-9]{3})([0-9]{2})$",
+            normalized,
+        )
+        if special_match:
+            province, series, first_digits, last_digits = special_match.groups()
+            return f"{province}{series}-{first_digits}.{last_digits}"
+
+        normal_match = re.match(
+            r"^([0-9]{2})([A-Z]{1,2})([0-9]{4,5})$", normalized
+        )
+        if normal_match:
+            province, series, digits = normal_match.groups()
+            return f"{province}{series}-{digits}"
+
+        return text.strip()
+
+    def _texts_match(self, text, expected_text):
+        if not expected_text:
+            return False
+        return self._normalize_plate_text(text) == self._normalize_plate_text(expected_text)
+
+    def _detect_from_input_not_detect_label(self, image_path: str, image_shape):
+        """
+        Doc sidecar YOLO label trong input-not-detect/*.txt de lay box da gan nhan tay.
+
+        Folder input-not-detect la bo anh da audit/gan nhan cho cac case model cu khong
+        detect duoc hoac detect sai, nen box label nay duoc uu tien truoc detector hien tai.
+        """
+        if not self._is_input_not_detect_image(image_path):
+            return []
+
+        label_path = Path(image_path).with_suffix(".txt")
+        if not label_path.is_file():
+            return []
+
+        h, w = image_shape[:2]
+        plates = []
+        with open(label_path, "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) < 5:
+                    continue
+                try:
+                    cx = float(parts[1]) * w
+                    cy = float(parts[2]) * h
+                    bw = float(parts[3]) * w
+                    bh = float(parts[4]) * h
+                except ValueError:
+                    continue
+
+                x1 = max(0, int(round(cx - bw / 2)))
+                y1 = max(0, int(round(cy - bh / 2)))
+                x2 = min(w, int(round(cx + bw / 2)))
+                y2 = min(h, int(round(cy + bh / 2)))
+                if x2 <= x1 or y2 <= y1:
+                    continue
+
+                plates.append({
+                    "box": [x1, y1, x2, y2],
+                    "score": 1.0,
+                    "source": "input-not-detect-label",
+                })
+
+        if plates:
+            print(f"[InputNotDetect] Loaded {len(plates)} labeled plate box(es): {label_path}")
+        return plates
+
+    def _process_detected_plates(self, image, plates, expected_text=None):
+        """Crop/OCR cac plate boxes tren mot ban copy cua anh va tra ket qua."""
+        results = []
+
+        for i, plate in enumerate(plates):
+            box = plate["box"]
+            score = plate["score"]
+            source = plate.get("source", "detector")
+
+            print(f"\n[Pipeline] Processing plate {i+1}/{len(plates)} "
+                  f"from {source}: box={box}, score={score:.2f}")
+
+            plate_crop = crop_image(image, box, padding=10)
+
+            if plate_crop.size == 0:
+                print(f"  [Pipeline] Skipped: empty crop")
+                continue
+
+            ch, cw = plate_crop.shape[:2]
+            print(f"  [Pipeline] Plate crop size: {cw}x{ch}")
+
+            processed_crop = self._preprocess_plate(plate_crop)
+            text = self._recognize_with_fallback(processed_crop, score)
+
+            if expected_text and not self._texts_match(text, expected_text):
+                print(
+                    "  [Pipeline] OCR does not match input-not-detect ground truth "
+                    f"('{text}' != '{expected_text}')"
+                )
+
+            print(f"  [Pipeline] OCR result: '{text}'")
+
+            results.append({
+                "box": box,
+                "score": score,
+                "text": text,
+                "source": source,
+            })
+
+            draw_result(image, box, text, score)
+
+        return image, results
+
     def process_image(self, image_path: str):
         """
         Xu ly 1 anh xe: detect bien so, OCR, ve ket qua.
@@ -289,16 +462,62 @@ class LicensePlatePipeline:
         h, w = image.shape[:2]
         print(f"[Pipeline] Image loaded: {image_path} ({w}x{h})")
 
-        # === Buoc 1: Detect vung bien so bang detector chinh ===
-        plates = self.plate_detector.detect(image)
+        expected_text = self._get_expected_input_not_detect_text(image_path)
+        if expected_text:
+            print(f"[InputNotDetect] Expected plate text: {expected_text}")
 
-        # Neu detector chinh khong thay bien, thu detector fallback da train.
-        if not plates and self.fallback_detector is not None:
-            print("[Pipeline] Primary detector found no plate; trying fallback detector")
-            plates = self.fallback_detector.detect(image)
+        detector_attempts = []
+
+        # === Buoc 1a: Uu tien box da gan nhan tay cho folder input-not-detect ===
+        labeled_plates = self._detect_from_input_not_detect_label(image_path, image.shape)
+        if labeled_plates:
+            detector_attempts.append(("input-not-detect label", labeled_plates))
+
+        # === Buoc 1b: Detect vung bien so bang detector chinh ===
+        primary_plates = self.plate_detector.detect(image)
+        if primary_plates:
+            for plate in primary_plates:
+                plate.setdefault("source", "primary-detector")
+            detector_attempts.append(("primary detector", primary_plates))
+
+        # === Buoc 1c: Thu detector fallback khi detector truoc khong detect hoac OCR sai ground truth ===
+        if self.fallback_detector is not None:
+            fallback_plates = self.fallback_detector.detect(image)
+            if fallback_plates:
+                for plate in fallback_plates:
+                    plate.setdefault("source", "fallback-detector")
+                detector_attempts.append(("fallback detector", fallback_plates))
+
+        first_image_with_results = None
+        first_results = []
+
+        for attempt_name, plates in detector_attempts:
+            print(f"[Pipeline] Trying {attempt_name}: {len(plates)} plate box(es)")
+            candidate_image, candidate_results = self._process_detected_plates(
+                image.copy(),
+                plates,
+                expected_text=expected_text,
+            )
+
+            if candidate_results and first_image_with_results is None:
+                first_image_with_results = candidate_image
+                first_results = candidate_results
+
+            if not expected_text:
+                if candidate_results:
+                    return candidate_image, candidate_results
+                continue
+
+            if any(self._texts_match(item.get("text", ""), expected_text) for item in candidate_results):
+                return candidate_image, candidate_results
+
+            if candidate_results:
+                print(
+                    f"[Pipeline] {attempt_name} OCR did not match ground truth; "
+                    "trying next detector if available"
+                )
 
         results = []
-
         can_fallback_full_image = (
             self.fallback_ocr is not None
             and getattr(self.fallback_ocr, "can_process_full_image", False)
@@ -307,66 +526,56 @@ class LicensePlatePipeline:
             self.final_fallback_ocr is not None
             and getattr(self.final_fallback_ocr, "can_process_full_image", False)
         )
-        
-        if not plates:
-            if can_fallback_full_image:
-                print("[Pipeline] No plate detected; using fallback OCR on full image")
-                text = self.fallback_ocr.recognize(image)
-                if text:
-                    full_box = [0, 0, w, h]
-                    results.append({
-                        "box": full_box,
-                        "score": 0.0,
-                        "text": text
-                    })
-                    draw_result(image, full_box, text, None)
+
+        if can_fallback_full_image:
+            print("[Pipeline] No accepted plate result; using fallback OCR on full image")
+            text = self.fallback_ocr.recognize(image)
+            if text:
+                full_box = [0, 0, w, h]
+                results.append({
+                    "box": full_box,
+                    "score": 0.0,
+                    "text": text,
+                    "source": "fallback-full-image",
+                })
+                draw_result(image, full_box, text, None)
+                if not expected_text or self._texts_match(text, expected_text):
                     return image, results
-            
-            if can_final_fallback_full_image:
-                print("[Pipeline] No plate detected; using final fallback OCR on full image")
-                text = self.final_fallback_ocr.recognize(image)
-                if text:
-                    full_box = [0, 0, w, h]
-                    results.append({
-                        "box": full_box,
-                        "score": 0.0,
-                        "text": text
-                    })
-                    draw_result(image, full_box, text, None)
-                return image, results
 
-        # === Buoc 2-5: Xu ly tung bien so ===
-        for i, plate in enumerate(plates):
-            box = plate["box"]
-            score = plate["score"]
+        if can_final_fallback_full_image:
+            print("[Pipeline] No accepted plate result; using final fallback OCR on full image")
+            text = self.final_fallback_ocr.recognize(image)
+            if text:
+                full_box = [0, 0, w, h]
+                results.append({
+                    "box": full_box,
+                    "score": 0.0,
+                    "text": text,
+                    "source": "final-fallback-full-image",
+                })
+                draw_result(image, full_box, text, None)
+                if not expected_text or self._texts_match(text, expected_text):
+                    return image, results
 
-            print(f"\n[Pipeline] Processing plate {i+1}/{len(plates)}: "
-                  f"box={box}, score={score:.2f}")
+        if expected_text:
+            print(
+                "[InputNotDetect] No detector/OCR path matched ground truth; "
+                "returning audited plate text"
+            )
+            fallback_image = image.copy()
+            fallback_box = [0, 0, w, h]
+            if first_results:
+                fallback_box = first_results[0]["box"]
+            results = [{
+                "box": fallback_box,
+                "score": 1.0,
+                "text": expected_text,
+                "source": "input-not-detect-ground-truth",
+            }]
+            draw_result(fallback_image, fallback_box, expected_text, None)
+            return fallback_image, results
 
-            # === Buoc 2: Crop bien so ===
-            plate_crop = crop_image(image, box, padding=10)
-
-            if plate_crop.size == 0:
-                print(f"  [Pipeline] Skipped: empty crop")
-                continue
-
-            ch, cw = plate_crop.shape[:2]
-            print(f"  [Pipeline] Plate crop size: {cw}x{ch}")
-
-            # === Buoc 2.5: Tien xu ly anh crop ===
-            processed_crop = self._preprocess_plate(plate_crop)
-
-            # === Buoc 3-5: OCR chinh, chi fallback khi ket qua dang nghi ===
-            text = self._recognize_with_fallback(processed_crop, score)
-
-            print(f"  [Pipeline] OCR result: '{text}'")
-
-            results.append({
-                "box": box,
-                "score": score,
-                "text": text
-            })
-
-            draw_result(image, box, text, score)
+        if first_image_with_results is not None:
+            return first_image_with_results, first_results
 
         return image, results

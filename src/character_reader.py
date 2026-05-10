@@ -20,10 +20,11 @@ class CharacterReader:
     Logic sort va format da duoc xu ly o day.
     """
 
-    def __init__(self, config_path: str = "config/plate_rules.yaml"):
+    def __init__(self, config_path: str = "config/plate_rules.yaml", debug: bool = False):
         # Tao PlateFormatter tu file config YAML.
         # PlateFormatter chua cac regex rule de format text bien so VN.
         self.formatter = PlateFormatter(config_path)
+        self.debug = debug
 
         # Bang chuyen doi ky tu hay bi nham lan giua chu va so.
         # Roboflow hoac YOLO co the nhan nham "0" thanh "O" hoac nguoc lai.
@@ -61,6 +62,9 @@ class CharacterReader:
         # Buoc 1: Goi engine con de detect ky tu
         chars = self.detect_chars(plate_image)
 
+        if self.debug:
+            self._debug_print_chars(chars)
+
         # Neu khong detect duoc ky tu nao thi tra chuoi rong
         if not chars:
             return ""
@@ -81,6 +85,22 @@ class CharacterReader:
         text = self.formatter.format(rows)
 
         return text
+
+    def _debug_print_chars(self, chars):
+        """In chi tiet cac ky tu detect duoc de debug model OCR YOLO/Roboflow."""
+        print(f"  [CharReader][debug] Detected chars: {len(chars)}")
+        if not chars:
+            return
+
+        # In theo thu tu trai -> phai de nhin nhanh chuoi OCR raw truoc khi group row.
+        for index, ch in enumerate(sorted(chars, key=lambda item: (item["cy"], item["cx"])), 1):
+            box = ch.get("box", [])
+            score = ch.get("score", 0.0)
+            print(
+                "  [CharReader][debug] "
+                f"#{index}: char={ch.get('char')!r} score={score:.3f} "
+                f"cx={ch.get('cx'):.1f} cy={ch.get('cy'):.1f} box={box}"
+            )
 
     def detect_chars(self, plate_image):
         """

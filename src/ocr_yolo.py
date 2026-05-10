@@ -23,10 +23,11 @@ class YoloCharacterOCR(CharacterReader):
         self,
         model_path: str,                                   # Duong dan model YOLO detect ky tu
         conf: float = 0.25,                                # Nguong confidence
-        config_path: str = "config/plate_rules.yaml"       # File rule format bien so
+        config_path: str = "config/plate_rules.yaml",      # File rule format bien so
+        debug: bool = False                                 # In chi tiet char detect de debug
     ):
         # Goi constructor class cha de nap PlateFormatter
-        super().__init__(config_path)
+        super().__init__(config_path, debug=debug)
 
         # Load model YOLO detect ky tu tu file .pt
         # Vi du: "models/char_detector.pt"
