@@ -6,12 +6,29 @@
 
 import argparse
 import cv2
+import os
+from pathlib import Path
 
 from src.pipeline import LicensePlatePipeline
-from src.utils import ensure_dir
+from src.utils import ensure_dir, parse_confidence_values
+
+
+def load_dotenv(path: str = ".env"):
+    if not os.path.isfile(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            os.environ.setdefault(key, value)
 
 
 def main():
+    load_dotenv()
     parser = argparse.ArgumentParser(description="License Plate OCR Pipeline")
 
     # --- Tham so dau vao/ra ---
@@ -27,6 +44,10 @@ def main():
     # --- Tham so confidence ---
     parser.add_argument("--plate-conf", type=float, default=0.25,
                         help="Nguong confidence detect bien so (0.0 - 1.0)")
+    parser.add_argument("--plate-conf-values", default=None,
+                        help="Comma-separated plate confidence thresholds to try, e.g. 0.25,0.15,0.10")
+    parser.add_argument("--fallback-plate-conf-values", default=None,
+                        help="Comma-separated confidence thresholds for fallback detector, e.g. 0.20,0.15")
     parser.add_argument("--char-conf", type=float, default=0.25,
                         help="Nguong confidence detect ky tu (0.0 - 1.0)")
 
@@ -92,6 +113,10 @@ def main():
         fallback_detect_engine=args.fallback_detect_engine,
         fallback_plate_model_path=args.fallback_plate_model,
         fallback_char_model_path=args.fallback_char_model,
+        plate_conf_values=parse_confidence_values(args.plate_conf_values, args.plate_conf),
+        fallback_plate_conf_values=parse_confidence_values(
+            args.fallback_plate_conf_values, args.plate_conf
+        ),
     )
 
     # === Chay Pipeline ===

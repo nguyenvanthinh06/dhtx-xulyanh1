@@ -20,6 +20,8 @@ from io import StringIO
 from pathlib import Path
 from typing import Iterable
 
+from src.utils import parse_confidence_values
+
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 VN_PLATE_RE = re.compile(r"^[0-9]{2}[A-Z]{1,2}-?[0-9]{4,5}$")
 
@@ -95,6 +97,7 @@ def process_with_pipeline(args: argparse.Namespace, image_path: Path) -> list[di
         plate_model_path=args.plate_model,
         char_model_path=args.char_model,
         plate_conf=args.plate_conf,
+        plate_conf_values=parse_confidence_values(args.plate_conf_values, args.plate_conf),
         char_conf=args.char_conf,
         config_path=args.config,
         ocr_engine=args.ocr_engine,
@@ -112,6 +115,9 @@ def process_with_pipeline(args: argparse.Namespace, image_path: Path) -> list[di
         fallback_detect_engine=args.fallback_detect_engine,
         fallback_plate_model_path=args.fallback_plate_model,
         fallback_char_model_path=args.fallback_char_model,
+        fallback_plate_conf_values=parse_confidence_values(
+            args.fallback_plate_conf_values, args.plate_conf
+        ),
     )
     _, results = pipeline.process_image(str(image_path))
     return results
@@ -135,7 +141,10 @@ def process_detect_only(args: argparse.Namespace, image_path: Path) -> list[dict
         roboflow_api_url=args.roboflow_api_url,
         roboflow_timeout=args.roboflow_timeout,
     )
-    plates = detector.detect(image)
+    plates = detector.detect(
+        image,
+        parse_confidence_values(args.plate_conf_values, args.plate_conf),
+    )
     return [{"box": plate["box"], "score": plate["score"], "text": ""} for plate in plates]
 
 
@@ -233,6 +242,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plate-model", default="models/plate_detector.pt")
     parser.add_argument("--char-model", default=None)
     parser.add_argument("--plate-conf", type=float, default=0.25)
+    parser.add_argument("--plate-conf-values", default=None,
+                        help="Comma-separated plate confidence thresholds to try, e.g. 0.25,0.15,0.10")
+    parser.add_argument("--fallback-plate-conf-values", default=None,
+                        help="Comma-separated confidence thresholds for fallback detector, e.g. 0.20,0.15")
     parser.add_argument("--char-conf", type=float, default=0.25)
     parser.add_argument("--min-audit-score", type=float, default=0.35)
     parser.add_argument("--fallback-min-plate-score", type=float, default=0.35)

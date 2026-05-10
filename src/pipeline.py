@@ -51,6 +51,8 @@ class LicensePlatePipeline:
         fallback_detect_engine: str = "none",
         fallback_plate_model_path: Optional[str] = None,
         fallback_char_model_path: Optional[str] = None,
+        plate_conf_values: Optional[list[float]] = None,
+        fallback_plate_conf_values: Optional[list[float]] = None,
         final_fallback_ocr_engine: str = "none",
         input_not_detect_dir: str = "input-not-detect",
         input_not_detect_ground_truth_path: str = "data/ground_truth/input_not_detect.csv",
@@ -65,10 +67,19 @@ class LicensePlatePipeline:
             input_not_detect_ground_truth_path
         )
 
+        self.plate_conf_values = (
+            list(plate_conf_values) if plate_conf_values is not None else [plate_conf]
+        )
+        self.fallback_plate_conf_values = (
+            list(fallback_plate_conf_values)
+            if fallback_plate_conf_values is not None
+            else self.plate_conf_values
+        )
+
         # === Tao Plate Detector chinh ===
         self.plate_detector = PlateDetector(
             model_path=plate_model_path,
-            conf=plate_conf,
+            conf=self.plate_conf_values[0],
             engine=detect_engine,
             roboflow_api_key=api_key,
             roboflow_model_id=roboflow_detect_model_id,
@@ -81,7 +92,7 @@ class LicensePlatePipeline:
         if fallback_detect_engine not in {"none", ""}:
             self.fallback_detector = PlateDetector(
                 model_path=fallback_plate_model_path or plate_model_path,
-                conf=plate_conf,
+                conf=self.fallback_plate_conf_values[0],
                 engine=fallback_detect_engine,
                 roboflow_api_key=api_key,
                 roboflow_model_id=roboflow_detect_model_id,
@@ -217,9 +228,26 @@ class LicensePlatePipeline:
         raise ValueError(f"Unsupported OCR engine: {ocr_engine}")
 
     def _is_valid_plate_text(self, text):
-        """Kiem tra text OCR co giong format bien so Viet Nam hay khong."""
+        """Kiem tra text OCR co giong format bien so Viet Nam va co ky tu hop le."""
         normalized = re.sub(r"[^0-9A-Z]", "", text.upper())
-        return bool(re.match(r"^[0-9]{2}[A-Z]{1,2}[0-9]{4,6}$", normalized))
+
+        match = re.match(r"^([0-9]{2})([A-Z]{1,2})([0-9]{4,6})$", normalized)
+        if not match:
+            return False
+
+        _, letters, digits = match.groups()
+        valid_letters = set("ABCDEFGHKLMNPSTUVXY")
+        special_pairs = {"CD", "LD", "NN", "NG", "QT", "CV"}
+
+        if len(letters) == 1:
+            return letters in valid_letters and 4 <= len(digits) <= 5
+
+        if len(letters) == 2:
+            if letters in special_pairs:
+                return len(digits) == 5
+            return all(ch in valid_letters for ch in letters) and 4 <= len(digits) <= 5
+
+        return False
 
     def _should_use_fallback(self, text, score):
         if self.fallback_ocr is None and self.final_fallback_ocr is None:
@@ -490,7 +518,7 @@ class LicensePlatePipeline:
             detector_attempts.append(("input-not-detect label", labeled_plates))
 
         # === Buoc 1b: Detect vung bien so bang detector chinh ===
-        primary_plates = self.plate_detector.detect(image)
+        primary_plates = self.plate_detector.detect(image, self.plate_conf_values)
         if primary_plates:
             for plate in primary_plates:
                 plate.setdefault("source", "primary-detector")
@@ -498,7 +526,7 @@ class LicensePlatePipeline:
 
         # === Buoc 1c: Thu detector fallback khi detector truoc khong detect hoac OCR sai ground truth ===
         if self.fallback_detector is not None:
-            fallback_plates = self.fallback_detector.detect(image)
+            fallback_plates = self.fallback_detector.detect(image, self.fallback_plate_conf_values)
             if fallback_plates:
                 for plate in fallback_plates:
                     plate.setdefault("source", "fallback-detector")

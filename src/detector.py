@@ -63,27 +63,44 @@ class PlateDetector:
         else:
             raise ValueError(f"Unsupported detector engine: {engine}")
 
-    def detect(self, image):
+    def detect(self, image, conf_values=None):
         """
         Detect vung bien so trong anh.
 
         Args:
             image: numpy array (BGR) - anh xe nguyen goc
+            conf_values: list[float] hoac float - danh sach nguong confidence de thu
 
         Returns:
             list[dict] - danh sach bien so, moi dict co:
                 - "box": [x1, y1, x2, y2]
                 - "score": float (0.0 - 1.0)
         """
-        if self.engine == "yolo":
-            return self._detect_yolo(image)
+        if conf_values is None:
+            conf_values = [self.conf]
+        elif isinstance(conf_values, (float, int)):
+            conf_values = [float(conf_values)]
         else:
-            return self._detect_roboflow(image)
+            conf_values = [float(conf) for conf in conf_values]
 
-    def _detect_yolo(self, image):
+        last_plates = []
+        for conf in conf_values:
+            print(f"[Detector] Trying plate confidence threshold {conf:.2f}")
+            if self.engine == "yolo":
+                plates = self._detect_yolo(image, conf)
+            else:
+                plates = self._detect_roboflow(image, conf)
+
+            if plates:
+                return plates
+            last_plates = plates
+
+        return last_plates
+
+    def _detect_yolo(self, image, conf):
         """Detect bang YOLO local."""
         # Chay YOLO inference tren anh
-        results = self.model.predict(image, conf=self.conf, verbose=False)
+        results = self.model.predict(image, conf=conf, verbose=False)
 
         plates = []
 
@@ -106,7 +123,7 @@ class PlateDetector:
         print(f"[YOLO] Detected {len(plates)} license plate(s)")
         return plates
 
-    def _detect_roboflow(self, image):
+    def _detect_roboflow(self, image, conf):
         """Detect bang Roboflow API (chinh xac hon YOLO local)."""
 
         # Encode anh thanh base64
@@ -120,7 +137,7 @@ class PlateDetector:
             f"{self.api_url}/{self.model_id}",
             params={
                 "api_key": self.api_key,
-                "confidence": int(round(self.conf * 100))
+                "confidence": int(round(conf * 100))
             },
             data=image_base64,
             headers={"Content-Type": "application/x-www-form-urlencoded"},

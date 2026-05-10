@@ -98,3 +98,32 @@ def ensure_dir(path):
               Vi du: "output" -> tao thu muc output/
     """
     os.makedirs(path, exist_ok=True)
+
+
+def parse_confidence_values(value, default=0.25):
+    """
+    Parse a confidence value or comma-separated list of confidences.
+    Returns a normalized list of floats in [0.0, 1.0].
+    """
+    if value is None:
+        return [float(default)]
+
+    if isinstance(value, (float, int)):
+        return [max(0.0, min(1.0, float(value)))]
+
+    if isinstance(value, str):
+        parts = [item.strip() for item in value.split(",") if item.strip()]
+        if not parts:
+            return [float(default)]
+        values = []
+        for part in parts:
+            try:
+                values.append(max(0.0, min(1.0, float(part))))
+            except ValueError:
+                raise ValueError(f"Invalid confidence value: {part}")
+        return values
+
+    if isinstance(value, (list, tuple)):
+        return [max(0.0, min(1.0, float(item))) for item in value]
+
+    raise ValueError(f"Unsupported confidence values type: {type(value).__name__}")
