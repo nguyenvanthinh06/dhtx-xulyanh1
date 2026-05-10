@@ -39,12 +39,13 @@ class RoboflowCharacterOCR(CharacterReader):
         api_url: str = "https://detect.roboflow.com",      # URL goc cua Roboflow Detect API
         conf: float = 0.25,                                # Nguong confidence toi thieu (0.0 - 1.0)
         config_path: str = "config/plate_rules.yaml",      # File cau hinh rule format bien so VN
-        timeout: float = 30.0                              # Thoi gian cho toi da cho 1 request (giay)
+        timeout: float = 30.0,                             # Thoi gian cho toi da cho 1 request (giay)
+        debug: bool = False                                # In chi tiet char detect de debug
     ):
         # Goi constructor cua class cha (CharacterReader) de nap PlateFormatter
         # tu file config. PlateFormatter chiu trach nhiem format text bien so
         # theo cac regex rule (vi du: "30A-12345").
-        super().__init__(config_path)
+        super().__init__(config_path, debug=debug)
 
         # Luu API key de dung khi gui request len Roboflow.
         # Key nay duoc truyen tu CLI (--roboflow-api-key) hoac bien moi truong.
