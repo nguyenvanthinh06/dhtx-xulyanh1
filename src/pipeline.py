@@ -222,7 +222,7 @@ class LicensePlatePipeline:
         return bool(re.match(r"^[0-9]{2}[A-Z]{1,2}[0-9]{4,6}$", normalized))
 
     def _should_use_fallback(self, text, score):
-        if self.fallback_ocr is None:
+        if self.fallback_ocr is None and self.final_fallback_ocr is None:
             return False
         if not text.strip():
             return True
@@ -231,6 +231,7 @@ class LicensePlatePipeline:
         return score < self.fallback_min_plate_score
 
     def _recognize_with_fallback(self, processed_crop, score):
+        ocr_source = "primary-ocr"
         try:
             text = self.ocr.recognize(processed_crop)
         except Exception as exc:
@@ -239,21 +240,35 @@ class LicensePlatePipeline:
             print(f"  [Pipeline] Primary OCR error: {exc}")
             text = ""
 
-        if self._should_use_fallback(text, score):
-            print("  [Pipeline] OCR suspicious; using fallback OCR")
-            if self.fallback_ocr:
-                fallback_text = self.fallback_ocr.recognize(processed_crop)
-                if fallback_text.strip() and not self._should_use_fallback(fallback_text, score):
-                    return fallback_text
-                text = fallback_text if fallback_text.strip() else text
-            
-            if self.final_fallback_ocr and self._should_use_fallback(text, score):
-                print("  [Pipeline] OCR still suspicious; using final fallback OCR")
-                final_text = self.final_fallback_ocr.recognize(processed_crop)
-                if final_text.strip():
-                    return final_text
+        if not self._should_use_fallback(text, score):
+            return text, ocr_source
 
-        return text
+        if self.fallback_ocr is not None:
+            print("  [Pipeline] OCR suspicious/empty; using fallback OCR")
+            try:
+                fallback_text = self.fallback_ocr.recognize(processed_crop)
+            except Exception as exc:
+                print(f"  [Pipeline] Fallback OCR error: {exc}")
+                fallback_text = ""
+
+            if fallback_text.strip():
+                text = fallback_text
+                ocr_source = "fallback-ocr"
+                if not self._should_use_fallback(text, score):
+                    return text, ocr_source
+
+        if self.final_fallback_ocr is not None and self._should_use_fallback(text, score):
+            print("  [Pipeline] OCR still suspicious/empty; using final fallback OCR")
+            try:
+                final_text = self.final_fallback_ocr.recognize(processed_crop)
+            except Exception as exc:
+                print(f"  [Pipeline] Final fallback OCR error: {exc}")
+                final_text = ""
+
+            if final_text.strip():
+                return final_text, "final-fallback-ocr"
+
+        return text, ocr_source
 
     def _preprocess_plate(self, plate_crop):
         """
@@ -422,7 +437,7 @@ class LicensePlatePipeline:
             print(f"  [Pipeline] Plate crop size: {cw}x{ch}")
 
             processed_crop = self._preprocess_plate(plate_crop)
-            text = self._recognize_with_fallback(processed_crop, score)
+            text, ocr_source = self._recognize_with_fallback(processed_crop, score)
 
             if expected_text and not self._texts_match(text, expected_text):
                 print(
@@ -437,6 +452,7 @@ class LicensePlatePipeline:
                 "score": score,
                 "text": text,
                 "source": source,
+                "ocr_source": ocr_source,
             })
 
             draw_result(image, box, text, score)
@@ -537,6 +553,7 @@ class LicensePlatePipeline:
                     "score": 0.0,
                     "text": text,
                     "source": "fallback-full-image",
+                    "ocr_source": "fallback-ocr",
                 })
                 draw_result(image, full_box, text, None)
                 if not expected_text or self._texts_match(text, expected_text):
@@ -552,6 +569,7 @@ class LicensePlatePipeline:
                     "score": 0.0,
                     "text": text,
                     "source": "final-fallback-full-image",
+                    "ocr_source": "final-fallback-ocr",
                 })
                 draw_result(image, full_box, text, None)
                 if not expected_text or self._texts_match(text, expected_text):
@@ -571,6 +589,7 @@ class LicensePlatePipeline:
                 "score": 1.0,
                 "text": expected_text,
                 "source": "input-not-detect-ground-truth",
+                "ocr_source": "input-not-detect-ground-truth",
             }]
             draw_result(fallback_image, fallback_box, expected_text, None)
             return fallback_image, results
