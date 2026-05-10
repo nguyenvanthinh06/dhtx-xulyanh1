@@ -1,6 +1,6 @@
-path: data/char_detection
+path: D:/dhtx/xulyanh/dhtx-xulyanh1/data/char_detection
 train: images/train
-val: images/val
+val: images/train
 test: images/test
 
 names:

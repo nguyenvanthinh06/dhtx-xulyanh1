@@ -35,12 +35,13 @@ def run(
     image_path: str,
     char_conf: float = 0.25,
     show: bool = True,
-    detect_engine: str = "roboflow",
-    ocr_engine: str = "roboflow",
-    fallback_ocr_engine: str = "auto",
-    fallback_detect_engine: str = "auto",
-    plate_model_path: str = "models/plate_detector.pt",
-    trained_plate_model_path: str = "models/plate_detector_v2.pt",
+    detect_engine: str = "yolo",
+    ocr_engine: str = "yolo",
+    fallback_ocr_engine: str = "roboflow",
+    fallback_detect_engine: str = "yolo",
+    final_fallback_ocr_engine: str = "gemini",
+    plate_model_path: str = "models/plate_detector_v2.pt",
+    fallback_plate_model_path: str = "models/plate_detector.pt",
     char_model_path: str = "models/char_detector.pt"
 ):
     """
@@ -84,9 +85,7 @@ def run(
         ocr_engine = "roboflow"
         fallback_ocr_engine = "gemini"
 
-    if ocr_engine == "yolo" and not os.path.isfile(char_model_path):
-        print(f"[ERROR] Khong tim thay char model cho OCR chinh: {char_model_path}")
-        return
+
 
     if fallback_ocr_engine == "auto":
         if os.path.isfile(char_model_path):
@@ -102,9 +101,10 @@ def run(
     use_yolo_ocr = ocr_engine == "yolo" or (
         fallback_ocr_engine == "yolo" and os.path.isfile(char_model_path)
     )
-    if use_yolo_ocr and not os.path.isfile(char_model_path):
-        print(f"[ERROR] Khong tim thay char model: {char_model_path}")
-        return
+    if ocr_engine == "yolo" and not os.path.isfile(char_model_path):
+        print(f"[WARN] Khong tim thay char model: {char_model_path}")
+        print("  -> Tu dong chuyen OCR chinh sang Roboflow do chua co model YOLO.")
+        ocr_engine = "roboflow"
 
     if fallback_ocr_engine == "gemini" and not gemini_api_key:
         print("[ERROR] Chua co GEMINI_API_KEY cho fallback Gemini.")
@@ -122,7 +122,8 @@ def run(
         gemini_api_key=gemini_api_key,
         fallback_ocr_engine=fallback_ocr_engine,
         fallback_detect_engine=fallback_detect_engine,
-        fallback_plate_model_path=trained_plate_model_path,
+        final_fallback_ocr_engine=final_fallback_ocr_engine,
+        fallback_plate_model_path=fallback_plate_model_path,
         fallback_char_model_path=char_model_path if os.path.isfile(char_model_path) else None
     )
 
@@ -182,44 +183,51 @@ if __name__ == "__main__":
     show = "--no-show" not in sys.argv
 
     # Parse --detect
-    det_engine = "roboflow"
+    det_engine = "yolo"
     if "--detect" in sys.argv:
         idx = sys.argv.index("--detect")
         if idx + 1 < len(sys.argv):
             det_engine = sys.argv[idx + 1]
 
     # Parse --ocr
-    ocr_engine = "roboflow"
+    ocr_engine = "yolo"
     if "--ocr" in sys.argv:
         idx = sys.argv.index("--ocr")
         if idx + 1 < len(sys.argv):
             ocr_engine = sys.argv[idx + 1]
 
     # Parse --fallback
-    fallback_ocr_engine = "auto"
+    fallback_ocr_engine = "roboflow"
     if "--fallback" in sys.argv:
         idx = sys.argv.index("--fallback")
         if idx + 1 < len(sys.argv):
             fallback_ocr_engine = sys.argv[idx + 1]
 
     # Parse fallback detector / model paths
-    fallback_detect_engine = "auto"
+    fallback_detect_engine = "yolo"
     if "--fallback-detect" in sys.argv:
         idx = sys.argv.index("--fallback-detect")
         if idx + 1 < len(sys.argv):
             fallback_detect_engine = sys.argv[idx + 1]
 
-    plate_model_path = "models/plate_detector.pt"
+    # Parse final fallback
+    final_fallback_ocr_engine = "gemini"
+    if "--final-fallback" in sys.argv:
+        idx = sys.argv.index("--final-fallback")
+        if idx + 1 < len(sys.argv):
+            final_fallback_ocr_engine = sys.argv[idx + 1]
+
+    plate_model_path = "models/plate_detector_v2.pt"
     if "--plate-model" in sys.argv:
         idx = sys.argv.index("--plate-model")
         if idx + 1 < len(sys.argv):
             plate_model_path = sys.argv[idx + 1]
 
-    trained_plate_model_path = "models/plate_detector_v2.pt"
-    if "--trained-plate-model" in sys.argv:
-        idx = sys.argv.index("--trained-plate-model")
+    fallback_plate_model_path = "models/plate_detector.pt"
+    if "--fallback-plate-model" in sys.argv:
+        idx = sys.argv.index("--fallback-plate-model")
         if idx + 1 < len(sys.argv):
-            trained_plate_model_path = sys.argv[idx + 1]
+            fallback_plate_model_path = sys.argv[idx + 1]
 
     char_model_path = "models/char_detector.pt"
     if "--char-model" in sys.argv:
@@ -235,7 +243,8 @@ if __name__ == "__main__":
         ocr_engine=ocr_engine,
         fallback_ocr_engine=fallback_ocr_engine,
         fallback_detect_engine=fallback_detect_engine,
+        final_fallback_ocr_engine=final_fallback_ocr_engine,
         plate_model_path=plate_model_path,
-        trained_plate_model_path=trained_plate_model_path,
+        fallback_plate_model_path=fallback_plate_model_path,
         char_model_path=char_model_path,
     )

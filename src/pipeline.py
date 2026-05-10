@@ -49,6 +49,7 @@ class LicensePlatePipeline:
         fallback_detect_engine: str = "none",
         fallback_plate_model_path: Optional[str] = None,
         fallback_char_model_path: Optional[str] = None,
+        final_fallback_ocr_engine: str = "none",
     ):
         # Lay API key: uu tien tu tham so, sau do doc bien moi truong
         api_key = roboflow_api_key or os.getenv("ROBOFLOW_API_KEY")
@@ -98,6 +99,22 @@ class LicensePlatePipeline:
         # === Tao OCR fallback (chi goi khi OCR chinh sai/empty hoac khong detect duoc bien) ===
         self.fallback_ocr = self._build_ocr(
             ocr_engine=fallback_ocr_engine,
+            char_model_path=fallback_char_model_path or char_model_path,
+            conf=char_conf,
+            config_path=config_path,
+            roboflow_api_key=api_key,
+            roboflow_model_id=roboflow_model_id,
+            roboflow_api_url=roboflow_api_url,
+            roboflow_timeout=roboflow_timeout,
+            gemini_api_key=gemini_key,
+            gemini_model_id=gemini_model_id,
+            gemini_api_url=gemini_api_url,
+            optional=True,
+        )
+
+        # === Tao OCR final fallback (chi goi khi cac OCR tren sai/empty) ===
+        self.final_fallback_ocr = self._build_ocr(
+            ocr_engine=final_fallback_ocr_engine,
             char_model_path=fallback_char_model_path or char_model_path,
             conf=char_conf,
             config_path=config_path,
@@ -201,16 +218,24 @@ class LicensePlatePipeline:
         try:
             text = self.ocr.recognize(processed_crop)
         except Exception as exc:
-            if self.fallback_ocr is None:
+            if self.fallback_ocr is None and self.final_fallback_ocr is None:
                 raise
             print(f"  [Pipeline] Primary OCR error: {exc}")
             text = ""
 
         if self._should_use_fallback(text, score):
             print("  [Pipeline] OCR suspicious; using fallback OCR")
-            fallback_text = self.fallback_ocr.recognize(processed_crop)
-            if fallback_text.strip():
-                return fallback_text
+            if self.fallback_ocr:
+                fallback_text = self.fallback_ocr.recognize(processed_crop)
+                if fallback_text.strip() and not self._should_use_fallback(fallback_text, score):
+                    return fallback_text
+                text = fallback_text if fallback_text.strip() else text
+            
+            if self.final_fallback_ocr and self._should_use_fallback(text, score):
+                print("  [Pipeline] OCR still suspicious; using final fallback OCR")
+                final_text = self.final_fallback_ocr.recognize(processed_crop)
+                if final_text.strip():
+                    return final_text
 
         return text
 
@@ -278,18 +303,37 @@ class LicensePlatePipeline:
             self.fallback_ocr is not None
             and getattr(self.fallback_ocr, "can_process_full_image", False)
         )
-        if not plates and can_fallback_full_image:
-            print("[Pipeline] No plate detected; using fallback OCR on full image")
-            text = self.fallback_ocr.recognize(image)
-            if text:
-                full_box = [0, 0, w, h]
-                results.append({
-                    "box": full_box,
-                    "score": 0.0,
-                    "text": text
-                })
-                draw_result(image, full_box, text, None)
-            return image, results
+        can_final_fallback_full_image = (
+            self.final_fallback_ocr is not None
+            and getattr(self.final_fallback_ocr, "can_process_full_image", False)
+        )
+        
+        if not plates:
+            if can_fallback_full_image:
+                print("[Pipeline] No plate detected; using fallback OCR on full image")
+                text = self.fallback_ocr.recognize(image)
+                if text:
+                    full_box = [0, 0, w, h]
+                    results.append({
+                        "box": full_box,
+                        "score": 0.0,
+                        "text": text
+                    })
+                    draw_result(image, full_box, text, None)
+                    return image, results
+            
+            if can_final_fallback_full_image:
+                print("[Pipeline] No plate detected; using final fallback OCR on full image")
+                text = self.final_fallback_ocr.recognize(image)
+                if text:
+                    full_box = [0, 0, w, h]
+                    results.append({
+                        "box": full_box,
+                        "score": 0.0,
+                        "text": text
+                    })
+                    draw_result(image, full_box, text, None)
+                return image, results
 
         # === Buoc 2-5: Xu ly tung bien so ===
         for i, plate in enumerate(plates):
