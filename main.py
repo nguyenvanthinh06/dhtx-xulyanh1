@@ -133,6 +133,8 @@ def main():
         print(f"  Text: {item['text']}")
         print(f"  Score: {item['score']:.2f}")
         print(f"  Box: {item['box']}")
+        if item.get("raw_text"):
+            print(f"  Raw OCR rejected: {item['raw_text']}")
         print("-" * 50)
 
     print(f"Saved result to: {args.output}")

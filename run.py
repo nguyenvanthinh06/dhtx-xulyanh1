@@ -4,7 +4,7 @@
 # Cach dung:
 #   py run.py input/can-canh.jpg
 #   py run.py input/test.jpg --conf 0.15
-#   py run.py input/test.jpg --no-show
+#   py run.py input/test.jpg --show
 #   py run.py input/test.jpg --detect yolo     (dung YOLO local cho detect)
 #   py run.py input/test.jpg             (mac dinh: YOLO local plate + YOLO local char)
 #   py run.py input-not-detect            (xu ly tat ca anh trong folder)
@@ -25,14 +25,18 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 def _read_env_key(name: str):
     value = os.getenv(name)
     if value:
-        return value
+        return value.strip().strip('"').strip("'")
 
     if os.path.isfile(".env"):
         with open(".env", "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith(f"{name}="):
-                    return line.split("=", 1)[1].strip()
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+
+                key, value = line.split("=", 1)
+                if key.strip() == name:
+                    return value.strip().strip('"').strip("'")
 
     return None
 
@@ -40,15 +44,16 @@ def _read_env_key(name: str):
 def run(
     image_path: str,
     char_conf: float = 0.25,
-    show: bool = True,
+    show: bool = False,
     detect_engine: str = "yolo",
     ocr_engine: str = "yolo",
-    fallback_ocr_engine: str = "auto",
+    fallback_ocr_engine: str = "roboflow",
     fallback_detect_engine: str = "none",
-    final_fallback_ocr_engine: str = "auto",
+    final_fallback_ocr_engine: str = "gemini",
     plate_model_path: str = "models/plate_detector_v2.pt",
     fallback_plate_model_path: str = "models/plate_detector.pt",
     char_model_path: str = "models/char_detector.pt",
+    api_timeout: float = 60.0,
     debug_chars: bool = False
 ):
     """
@@ -178,6 +183,7 @@ def run(
         detect_engine=detect_engine,
         roboflow_api_key=roboflow_api_key,
         gemini_api_key=gemini_api_key,
+        roboflow_timeout=api_timeout,
         fallback_ocr_engine=fallback_ocr_engine,
         fallback_detect_engine=fallback_detect_engine,
         final_fallback_ocr_engine=final_fallback_ocr_engine,
@@ -209,6 +215,8 @@ def run(
             print(f"  Box:       {item['box']}")
             if item.get("ocr_source"):
                 print(f"  OCR:       {item['ocr_source']}")
+            if item.get("raw_text"):
+                print(f"  Raw OCR rejected: {item['raw_text']}")
             if not text.strip():
                 print("  Trang thai: detect_duoc_vung_bien_nhung_ocr_rong")
             if i < len(results):
@@ -253,7 +261,7 @@ def run_source(source_path: str, **kwargs):
         print("[ERROR] Khong tim thay anh nao de xu ly.")
         return
 
-    show = kwargs.get("show", True)
+    show = kwargs.get("show", False)
     if len(image_paths) > 1 and show:
         print("[INFO] Source la folder; tu dong tat mo anh ket qua cho tung file.")
         kwargs["show"] = False
@@ -272,10 +280,11 @@ if __name__ == "__main__":
         print("  py run.py <duong_dan_anh_hoac_folder>")
         print("  py run.py input/can-canh.jpg")
         print("  py run.py input/test.jpg --conf 0.15")
-        print("  py run.py input/test.jpg --no-show")
+        print("  py run.py input/test.jpg --show")
         print("  py run.py input/test.jpg --detect yolo")
         print("  py run.py input/test.jpg --debug-chars")
-        print("  py run.py input/test.jpg --fallback roboflow --final-fallback gemini")
+        print("  py run.py input/test.jpg --fallback none --final-fallback none")
+        print("  py run.py input/test.jpg --timeout 30")
         print("  py run.py input/test.jpg")
         print("  py run.py input-not-detect")
         print("  py run.py input/test.jpg --plate-model models/plate_detector_v2.pt")
@@ -290,8 +299,8 @@ if __name__ == "__main__":
         if idx + 1 < len(sys.argv):
             conf = float(sys.argv[idx + 1])
 
-    # Parse --no-show
-    show = "--no-show" not in sys.argv
+    # Mac dinh khong mo anh ket qua. Dung --show neu can mo bang app mac dinh.
+    show = "--show" in sys.argv
 
     # Parse --detect
     det_engine = "yolo"
@@ -308,7 +317,7 @@ if __name__ == "__main__":
             ocr_engine = sys.argv[idx + 1]
 
     # Parse --fallback
-    fallback_ocr_engine = "auto"
+    fallback_ocr_engine = "roboflow"
     if "--fallback" in sys.argv:
         idx = sys.argv.index("--fallback")
         if idx + 1 < len(sys.argv):
@@ -322,7 +331,7 @@ if __name__ == "__main__":
             fallback_detect_engine = sys.argv[idx + 1]
 
     # Parse final fallback
-    final_fallback_ocr_engine = "auto"
+    final_fallback_ocr_engine = "gemini"
     if "--final-fallback" in sys.argv:
         idx = sys.argv.index("--final-fallback")
         if idx + 1 < len(sys.argv):
@@ -348,6 +357,12 @@ if __name__ == "__main__":
 
     debug_chars = "--debug-chars" in sys.argv
 
+    api_timeout = 60.0
+    if "--timeout" in sys.argv:
+        idx = sys.argv.index("--timeout")
+        if idx + 1 < len(sys.argv):
+            api_timeout = float(sys.argv[idx + 1])
+
     run_source(
         img,
         char_conf=conf,
@@ -360,5 +375,6 @@ if __name__ == "__main__":
         plate_model_path=plate_model_path,
         fallback_plate_model_path=fallback_plate_model_path,
         char_model_path=char_model_path,
+        api_timeout=api_timeout,
         debug_chars=debug_chars,
     )

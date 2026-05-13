@@ -8,6 +8,8 @@
 
 # Import PlateFormatter de format text bien so theo rule YAML
 # Vi du: "30A12345" -> "30A-12345"
+import re
+
 from src.plate_formatter import PlateFormatter
 
 
@@ -84,7 +86,69 @@ class CharacterReader:
         # Buoc 4: Format text bien so theo rule YAML
         text = self.formatter.format(rows)
 
+        recovered_text = self._recover_by_dropping_noisy_char(chars, text)
+        if recovered_text:
+            return recovered_text
+
         return text
+
+    def _is_valid_plate_text(self, text):
+        """Kiem tra nhanh text da format co giong bien so Viet Nam khong."""
+        normalized = re.sub(r"[^0-9A-Z]", "", text.upper())
+
+        match = re.match(r"^([0-9]{2})([A-Z]{1,2})([0-9]{4,6})$", normalized)
+        if not match:
+            return False
+
+        _, letters, digits = match.groups()
+        valid_letters = set("ABCDEFGHKLMNPSTUVXY")
+        special_pairs = {"CD", "LD", "NN", "NG", "QT", "CV"}
+
+        if len(letters) == 1:
+            return letters in valid_letters and 4 <= len(digits) <= 5
+
+        if len(letters) == 2:
+            if letters in special_pairs:
+                return len(digits) == 5
+            return all(ch in valid_letters for ch in letters) and 4 <= len(digits) <= 5
+
+        return False
+
+    def _recover_by_dropping_noisy_char(self, chars, current_text):
+        """
+        Roboflow/YOLO doi khi detect thua 1 ky tu nhiu co confidence thap.
+        Neu text hien tai sai format, thu bo tung ky tu thap diem va format lai.
+        """
+        if self._is_valid_plate_text(current_text) or len(chars) < 8:
+            return None
+
+        candidates = sorted(
+            enumerate(chars),
+            key=lambda item: item[1].get("score", 1.0),
+        )
+
+        for index, ch in candidates:
+            if ch.get("score", 1.0) > 0.35:
+                continue
+
+            remaining_chars = [
+                item
+                for candidate_index, item in enumerate(chars)
+                if candidate_index != index
+            ]
+            candidate_rows = self.group_chars_to_rows(remaining_chars)
+            candidate_rows = self.apply_vn_plate_corrections(candidate_rows)
+            candidate_text = self.formatter.format(candidate_rows)
+
+            if self._is_valid_plate_text(candidate_text):
+                print(
+                    "  [CharReader] Recovered valid plate by dropping noisy "
+                    f"char '{ch.get('char')}' score={ch.get('score', 0.0):.2f}: "
+                    f"'{current_text}' -> '{candidate_text}'"
+                )
+                return candidate_text
+
+        return None
 
     def _debug_print_chars(self, chars):
         """In chi tiet cac ky tu detect duoc de debug model OCR YOLO/Roboflow."""

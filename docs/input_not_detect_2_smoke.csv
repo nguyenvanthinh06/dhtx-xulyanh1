@@ -1,0 +1,6 @@
+image,status,texts,raw_texts,scores,boxes,destination,note
+D:\dhtx\xulyanh\dhtx-xulyanh1\input\1740193045000.jpeg,ocr_empty, | ,44AT3230199080 | 3,0.767 | 0.446,"[123, 349, 210, 378] | [137, 284, 193, 325]",D:\dhtx\xulyanh\dhtx-xulyanh1\input-not-detect-2\1740193045000.jpeg,All OCR texts are empty. Rejected raw OCR: 44AT3230199080 | 3
+D:\dhtx\xulyanh\dhtx-xulyanh1\input\1740454364000.jpeg,ok,36H-03712,,0.883,"[120, 360, 221, 412]",,At least one OCR text has a valid Vietnamese plate format.
+D:\dhtx\xulyanh\dhtx-xulyanh1\input\1740585665000.jpeg,ok,89C-1723,,0.774,"[124, 346, 221, 376]",,At least one OCR text has a valid Vietnamese plate format.
+D:\dhtx\xulyanh\dhtx-xulyanh1\input\1740588934000.jpeg,ocr_empty,,36CD62190660,0.915,"[94, 320, 214, 387]",D:\dhtx\xulyanh\dhtx-xulyanh1\input-not-detect-2\1740588934000.jpeg,All OCR texts are empty. Rejected raw OCR: 36CD62190660
+D:\dhtx\xulyanh\dhtx-xulyanh1\input\1740739498922-909582179.jpg,ok,37A-00236,,0.944,"[671, 2309, 1603, 3032]",,At least one OCR text has a valid Vietnamese plate format.

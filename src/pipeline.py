@@ -249,14 +249,28 @@ class LicensePlatePipeline:
 
         return False
 
+    def _ocr_text_problem(self, text):
+        if not text.strip():
+            return "OCR result is empty"
+        if not self._is_valid_plate_text(text):
+            return f"OCR result '{text}' is not a valid VN plate format"
+        return None
+
+    def _ocr_fallback_reason(self, text, score):
+        text_problem = self._ocr_text_problem(text)
+        if text_problem:
+            return text_problem
+        if score < self.fallback_min_plate_score:
+            return (
+                f"plate score {score:.2f} is below fallback threshold "
+                f"{self.fallback_min_plate_score:.2f}"
+            )
+        return None
+
     def _should_use_fallback(self, text, score):
         if self.fallback_ocr is None and self.final_fallback_ocr is None:
             return False
-        if not text.strip():
-            return True
-        if not self._is_valid_plate_text(text):
-            return True
-        return score < self.fallback_min_plate_score
+        return self._ocr_fallback_reason(text, score) is not None
 
     def _recognize_with_fallback(self, processed_crop, score):
         ocr_source = "primary-ocr"
@@ -268,8 +282,11 @@ class LicensePlatePipeline:
             print(f"  [Pipeline] Primary OCR error: {exc}")
             text = ""
 
-        if not self._should_use_fallback(text, score):
+        reason = self._ocr_fallback_reason(text, score)
+        if not reason:
             return text, ocr_source
+
+        print(f"  [Pipeline] OCR fallback reason: {reason}")
 
         if self.fallback_ocr is not None:
             print("  [Pipeline] OCR suspicious/empty; using fallback OCR")
@@ -282,10 +299,13 @@ class LicensePlatePipeline:
             if fallback_text.strip():
                 text = fallback_text
                 ocr_source = "fallback-ocr"
-                if not self._should_use_fallback(text, score):
+                reason = self._ocr_fallback_reason(text, score)
+                if not reason:
                     return text, ocr_source
+                print(f"  [Pipeline] Fallback OCR result still needs fallback: {reason}")
 
-        if self.final_fallback_ocr is not None and self._should_use_fallback(text, score):
+        reason = self._ocr_fallback_reason(text, score)
+        if self.final_fallback_ocr is not None and reason:
             print("  [Pipeline] OCR still suspicious/empty; using final fallback OCR")
             try:
                 final_text = self.final_fallback_ocr.recognize(processed_crop)
@@ -294,7 +314,11 @@ class LicensePlatePipeline:
                 final_text = ""
 
             if final_text.strip():
-                return final_text, "final-fallback-ocr"
+                final_reason = self._ocr_text_problem(final_text)
+                if final_reason:
+                    print(f"  [Pipeline] Final fallback OCR result rejected: {final_reason}")
+                else:
+                    return final_text, "final-fallback-ocr"
 
         return text, ocr_source
 
@@ -466,6 +490,14 @@ class LicensePlatePipeline:
 
             processed_crop = self._preprocess_plate(plate_crop)
             text, ocr_source = self._recognize_with_fallback(processed_crop, score)
+            raw_text = None
+
+            text_problem = self._ocr_text_problem(text)
+            if text_problem:
+                if text.strip():
+                    raw_text = text
+                    print(f"  [Pipeline] OCR result rejected: {text_problem}")
+                text = ""
 
             if expected_text and not self._texts_match(text, expected_text):
                 print(
@@ -482,6 +514,8 @@ class LicensePlatePipeline:
                 "source": source,
                 "ocr_source": ocr_source,
             })
+            if raw_text:
+                results[-1]["raw_text"] = raw_text
 
             draw_result(image, box, text, score)
 
@@ -548,8 +582,16 @@ class LicensePlatePipeline:
                 first_results = candidate_results
 
             if not expected_text:
-                if candidate_results:
+                if candidate_results and any(
+                    self._ocr_text_problem(item.get("text", "")) is None
+                    for item in candidate_results
+                ):
                     return candidate_image, candidate_results
+                if candidate_results:
+                    print(
+                        "[Pipeline] Detector result has no valid plate text; "
+                        "trying full-image fallback if available"
+                    )
                 continue
 
             if any(self._texts_match(item.get("text", ""), expected_text) for item in candidate_results):
@@ -573,8 +615,15 @@ class LicensePlatePipeline:
 
         if can_fallback_full_image:
             print("[Pipeline] No accepted plate result; using fallback OCR on full image")
-            text = self.fallback_ocr.recognize(image)
-            if text:
+            try:
+                text = self.fallback_ocr.recognize(image)
+            except Exception as exc:
+                print(f"[Pipeline] Full-image fallback OCR error: {exc}")
+                text = ""
+            text_problem = self._ocr_text_problem(text)
+            if text and text_problem:
+                print(f"[Pipeline] Full-image fallback OCR result rejected: {text_problem}")
+            elif text:
                 full_box = [0, 0, w, h]
                 results.append({
                     "box": full_box,
@@ -589,8 +638,15 @@ class LicensePlatePipeline:
 
         if can_final_fallback_full_image:
             print("[Pipeline] No accepted plate result; using final fallback OCR on full image")
-            text = self.final_fallback_ocr.recognize(image)
-            if text:
+            try:
+                text = self.final_fallback_ocr.recognize(image)
+            except Exception as exc:
+                print(f"[Pipeline] Full-image final fallback OCR error: {exc}")
+                text = ""
+            text_problem = self._ocr_text_problem(text)
+            if text and text_problem:
+                print(f"[Pipeline] Full-image final fallback OCR result rejected: {text_problem}")
+            elif text:
                 full_box = [0, 0, w, h]
                 results.append({
                     "box": full_box,
