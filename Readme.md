@@ -1,5 +1,15 @@
 # License Plate OCR
 
+## He thong quan ly vat lieu cong truong
+
+Repo hien da co them he thong quan ly xe cho vat lieu ra vao cong truong:
+
+- Backend NestJS CRUD + PostgreSQL trong `nest-plate-ocr-client/`.
+- Frontend React + Ant Design trong `construction-materials-web/`.
+- Docker Compose cho PostgreSQL, pgAdmin, Python OCR API, backend va frontend.
+
+Xem tai lieu chay he thong tai `docs/construction_materials_system.md`.
+
 Flow hien tai:
 
 Anh xe -> YOLO detect vung bien so -> crop bien so -> Roboflow character detection -> sort ky tu -> tra text bien so.

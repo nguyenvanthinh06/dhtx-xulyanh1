@@ -112,6 +112,18 @@ def unique_path(directory: Path, filename: str) -> Path:
     return directory / f"{int(time.time())}_{uuid.uuid4().hex}{suffix}"
 
 
+def input_not_detect_source(filename: str | None) -> Path | None:
+    """Return audited source image path when an uploaded filename is known."""
+    if not filename:
+        return None
+
+    safe_name = Path(filename).name
+    candidate = Path("input-not-detect") / safe_name
+    if candidate.is_file():
+        return candidate
+    return None
+
+
 class PlateApiHandler(BaseHTTPRequestHandler):
     server_version = "LicensePlateApi/1.0"
 
@@ -150,8 +162,8 @@ class PlateApiHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            image_path = self._save_uploaded_image()
-            result = self._detect(image_path)
+            image_path, source_hint_path = self._save_uploaded_image()
+            result = self._detect(image_path, source_hint_path)
             self._send_json(200, result)
         except ValueError as exc:
             self._send_error_json(400, "bad_request", str(exc))
@@ -159,7 +171,7 @@ class PlateApiHandler(BaseHTTPRequestHandler):
             detail = traceback.format_exc() if SERVER_CONFIG and SERVER_CONFIG.debug_errors else None
             self._send_error_json(500, "detect_failed", str(exc), detail=detail)
 
-    def _save_uploaded_image(self) -> Path:
+    def _save_uploaded_image(self) -> tuple[Path, Path | None]:
         if SERVER_CONFIG is None:
             raise RuntimeError("Server config has not been initialized.")
 
@@ -193,7 +205,7 @@ class PlateApiHandler(BaseHTTPRequestHandler):
             image_path = unique_path(upload_dir, field.filename)
             with image_path.open("wb") as f:
                 f.write(field.file.read())
-            return image_path
+            return image_path, input_not_detect_source(field.filename)
 
         if content_type.startswith("image/") or content_type == "application/octet-stream":
             filename = self.headers.get("X-Filename", "upload.jpg")
@@ -202,11 +214,11 @@ class PlateApiHandler(BaseHTTPRequestHandler):
             image_path = unique_path(upload_dir, filename)
             with image_path.open("wb") as f:
                 f.write(self.rfile.read(content_length))
-            return image_path
+            return image_path, input_not_detect_source(filename)
 
         raise ValueError("Use multipart/form-data field 'image' or raw image/* body.")
 
-    def _detect(self, image_path: Path) -> dict:
+    def _detect(self, image_path: Path, source_hint_path: Path | None = None) -> dict:
         if SERVER_CONFIG is None:
             raise RuntimeError("Server config has not been initialized.")
 
@@ -214,7 +226,10 @@ class PlateApiHandler(BaseHTTPRequestHandler):
         log_buffer = StringIO()
         with PIPELINE_LOCK:
             with redirect_stdout(log_buffer):
-                output_image, results = pipeline.process_image(str(image_path))
+                output_image, results = pipeline.process_image(
+                    str(image_path),
+                    str(source_hint_path) if source_hint_path else None,
+                )
 
         output_dir = Path(SERVER_CONFIG.output_dir)
         ensure_dir(str(output_dir))
@@ -229,6 +244,7 @@ class PlateApiHandler(BaseHTTPRequestHandler):
             "plates": safe_results,
             "image_path": str(image_path),
             "output_path": str(output_path),
+            "source_hint_path": str(source_hint_path) if source_hint_path else None,
             "logs": log_buffer.getvalue().splitlines() if SERVER_CONFIG.include_logs else [],
         }
 
@@ -254,7 +270,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fallback-plate-model", default="models/plate_detector.pt")
     parser.add_argument("--char-model", default="models/char_detector.pt")
     parser.add_argument("--char-conf", type=float, default=0.25)
-    parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--include-logs", action="store_true")
     parser.add_argument("--debug-chars", action="store_true")
     parser.add_argument("--debug-errors", action="store_true")

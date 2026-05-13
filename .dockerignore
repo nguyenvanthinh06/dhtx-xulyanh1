@@ -1,0 +1,14 @@
+.git
+__pycache__/
+*.pyc
+runs/
+experiments/
+input/
+input-not-detect/
+input-not-detect-2/
+output/
+uploads/
+nest-plate-ocr-client/node_modules/
+nest-plate-ocr-client/dist/
+construction-materials-web/node_modules/
+construction-materials-web/dist/

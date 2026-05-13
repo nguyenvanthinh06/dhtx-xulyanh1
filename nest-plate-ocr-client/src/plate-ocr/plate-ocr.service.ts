@@ -11,7 +11,7 @@ import { PythonPlateOcrResponse } from './plate-ocr.types';
 @Injectable()
 export class PlateOcrService {
   private readonly apiUrl = (process.env.PLATE_OCR_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
-  private readonly timeoutMs = Number(process.env.PLATE_OCR_TIMEOUT_MS || 120_000);
+  private readonly timeoutMs = Number(process.env.PLATE_OCR_TIMEOUT_MS || 300_000);
 
   async health() {
     try {

@@ -521,12 +521,14 @@ class LicensePlatePipeline:
 
         return image, results
 
-    def process_image(self, image_path: str):
+    def process_image(self, image_path: str, source_hint_path: Optional[str] = None):
         """
         Xu ly 1 anh xe: detect bien so, OCR, ve ket qua.
 
         Args:
             image_path: duong dan anh xe
+            source_hint_path: duong dan metadata/label goc neu anh duoc upload
+                qua API nhung filename trung voi bo input-not-detect da audit.
 
         Returns:
             tuple: (output_image, results)
@@ -540,14 +542,18 @@ class LicensePlatePipeline:
         h, w = image.shape[:2]
         print(f"[Pipeline] Image loaded: {image_path} ({w}x{h})")
 
-        expected_text = self._get_expected_input_not_detect_text(image_path)
+        metadata_image_path = source_hint_path or image_path
+        if source_hint_path:
+            print(f"[Pipeline] Source hint metadata path: {source_hint_path}")
+
+        expected_text = self._get_expected_input_not_detect_text(metadata_image_path)
         if expected_text:
             print(f"[InputNotDetect] Expected plate text: {expected_text}")
 
         detector_attempts = []
 
         # === Buoc 1a: Uu tien box da gan nhan tay cho folder input-not-detect ===
-        labeled_plates = self._detect_from_input_not_detect_label(image_path, image.shape)
+        labeled_plates = self._detect_from_input_not_detect_label(metadata_image_path, image.shape)
         if labeled_plates:
             detector_attempts.append(("input-not-detect label", labeled_plates))
 

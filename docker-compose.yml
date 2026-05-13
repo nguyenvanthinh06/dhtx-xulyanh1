@@ -1,0 +1,94 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: construction-materials-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: construction_materials
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d construction_materials"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: construction-materials-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  plate-ocr-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.ocr
+    container_name: construction-materials-plate-ocr
+    environment:
+      ROBOFLOW_API_KEY: ${ROBOFLOW_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    command:
+      - python
+      - api_server.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --quiet
+      - --timeout
+      - "180"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+      - ./uploads:/app/uploads
+      - ./output:/app/output
+
+  backend:
+    build:
+      context: ./nest-plate-ocr-client
+    container_name: construction-materials-backend
+    environment:
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: construction_materials
+      TYPEORM_SYNCHRONIZE: "true"
+      PLATE_OCR_API_URL: http://plate-ocr-api:8000
+      PLATE_OCR_TIMEOUT_MS: 300000
+      MAX_UPLOAD_MB: 15
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      plate-ocr-api:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./construction-materials-web
+      args:
+        VITE_API_URL: http://localhost:3000
+    container_name: construction-materials-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  pgadmin_data:

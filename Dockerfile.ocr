@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1
+
+RUN pip install --no-cache-dir \
+  ultralytics \
+  opencv-python-headless \
+  numpy \
+  pyyaml \
+  requests
+
+COPY api_server.py ./
+COPY src ./src
+COPY config ./config
+
+EXPOSE 8000
+
+CMD ["python", "api_server.py", "--host", "0.0.0.0", "--port", "8000"]

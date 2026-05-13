@@ -1,6 +1,11 @@
-# NestJS Plate OCR Client
+# NestJS Plate OCR + Construction Materials API
 
-NestJS service mau de nhan anh upload tu app/backend khac va forward sang Python OCR API trong repo cha.
+NestJS backend de:
+
+- Nhan anh upload va forward sang Python OCR API trong repo cha.
+- Quan ly cong trinh, vat tu, nha cung cap, ke hoach nhap vat lieu.
+- Ghi nhan tung chuyen xe nhap vat lieu, ket hop OCR bien so.
+- Tra bao cao tong hop theo cong trinh/vat tu/nha cung cap/thoi gian.
 
 ## Payload
 
@@ -56,6 +61,13 @@ MAX_UPLOAD_MB=15
 ```text
 GET  /plates/health
 POST /plates/detect
+GET  /projects
+GET  /materials
+GET  /suppliers
+GET  /import-plans
+GET  /material-trips
+POST /material-trips/with-plate-image
+GET  /reports/overview
 ```
 
 Response mau:
