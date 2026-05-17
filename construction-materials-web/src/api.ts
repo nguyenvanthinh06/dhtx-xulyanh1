@@ -4,6 +4,7 @@ import {
   Material,
   MaterialTrip,
   Overview,
+  PlateDetectOptions,
   PlateOcrResponse,
   Project,
   Supplier,
@@ -25,9 +26,12 @@ function params(payload: Record<string, unknown>) {
 
 export const api = {
   health: async () => (await http.get('/plates/health')).data,
-  detectPlate: async (image: File) => {
+  detectPlate: async (image: File, options: PlateDetectOptions = {}) => {
     const form = new FormData();
     form.append('image', image);
+    Object.entries(cleanPayload(options as Record<string, unknown>)).forEach(([key, value]) => {
+      form.append(key, String(value));
+    });
     return (await http.post<PlateOcrResponse>('/plates/detect', form)).data;
   },
 

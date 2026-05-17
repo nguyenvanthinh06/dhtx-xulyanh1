@@ -101,7 +101,28 @@ export interface PlateOcrResponse {
   }>;
   image_path: string;
   output_path: string;
+  source_hint_path?: string | null;
+  output_image_base64?: string;
+  options?: Record<string, unknown>;
   logs?: string[];
+}
+
+export interface PlateDetectOptions {
+  detectEngine?: string;
+  ocrEngine?: string;
+  fallback?: string;
+  finalFallback?: string;
+  fallbackDetect?: string;
+  plateModel?: string;
+  fallbackPlateModel?: string;
+  charModel?: string;
+  plateConf?: string;
+  fallbackPlateConf?: string;
+  charConf?: string;
+  plateCropScale?: string;
+  minPlateWidth?: string;
+  includeLogs?: boolean;
+  includeImage?: boolean;
 }
 
 export interface AggregateRow {

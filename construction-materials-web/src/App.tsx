@@ -11,6 +11,7 @@ import {
 import {
   AppstoreOutlined,
   BarChartOutlined,
+  CameraOutlined,
   CarOutlined,
   ClusterOutlined,
   FileTextOutlined,
@@ -22,6 +23,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ImportPlansPage } from './pages/ImportPlansPage';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { MaterialTripsPage } from './pages/MaterialTripsPage';
+import { PlateDetectPage } from './pages/PlateDetectPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { SuppliersPage } from './pages/SuppliersPage';
 import { useConstructionDataViewModel } from './viewModels/useConstructionDataViewModel';
@@ -29,7 +31,7 @@ import { useConstructionDataViewModel } from './viewModels/useConstructionDataVi
 const { Header, Content, Sider } = Layout;
 const { Text } = Typography;
 
-type SectionKey = 'dashboard' | 'projects' | 'materials' | 'suppliers' | 'plans' | 'trips';
+type SectionKey = 'dashboard' | 'projects' | 'materials' | 'suppliers' | 'plans' | 'trips' | 'plate-detect';
 
 function AppShell() {
   const [section, setSection] = useState<SectionKey>('dashboard');
@@ -76,6 +78,10 @@ function AppShell() {
       );
     }
 
+    if (section === 'plate-detect') {
+      return <PlateDetectPage />;
+    }
+
     return (
       <MaterialTripsPage
         trips={vm.trips}
@@ -110,6 +116,7 @@ function AppShell() {
             { key: 'suppliers', icon: <ShopOutlined />, label: 'Nhà cung cấp' },
             { key: 'plans', icon: <FileTextOutlined />, label: 'Kế hoạch nhập' },
             { key: 'trips', icon: <CarOutlined />, label: 'Chuyến xe' },
+            { key: 'plate-detect', icon: <CameraOutlined />, label: 'Detect biển số' },
           ]}
         />
       </Sider>

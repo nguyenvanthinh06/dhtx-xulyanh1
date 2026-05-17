@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Post,
@@ -8,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PlateOcrService } from './plate-ocr.service';
+import { PlateOcrDetectOptions } from './plate-ocr.types';
 
 const IMAGE_MIME_TYPES = new Set([
   'image/jpeg',
@@ -40,11 +42,11 @@ export class PlateOcrController {
       },
     }),
   )
-  detect(@UploadedFile() file?: Express.Multer.File) {
+  detect(@UploadedFile() file?: Express.Multer.File, @Body() options: PlateOcrDetectOptions = {}) {
     if (!file) {
       throw new BadRequestException("Missing multipart file field 'image'.");
     }
 
-    return this.plateOcrService.detectFromUpload(file);
+    return this.plateOcrService.detectFromUpload(file, options);
   }
 }

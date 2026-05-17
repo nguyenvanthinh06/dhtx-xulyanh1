@@ -2,12 +2,121 @@ import { App as AntApp, Form } from 'antd';
 import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { MaterialTrip, PlateOcrResponse } from '../types';
+import type { MaterialTrip, PlateDetectOptions, PlateOcrResponse } from '../types';
 import { detectedPlateText, errorText, ocrFields } from '../utils/format';
 
 type UseMaterialTripEditorParams = {
   refresh: () => Promise<void>;
 };
+
+type AutoPlateDetectAttempt = {
+  label: string;
+  options: PlateDetectOptions;
+};
+
+const autoPlateDetectAttempts: AutoPlateDetectAttempt[] = [
+  {
+    label: 'YOLO v2 + YOLO OCR',
+    options: {
+      detectEngine: 'yolo',
+      ocrEngine: 'yolo',
+      fallback: 'roboflow',
+      finalFallback: 'gemini',
+      fallbackDetect: 'none',
+      plateModel: 'plate-v2',
+      fallbackPlateModel: 'plate-v1',
+      plateConf: '0.25',
+      fallbackPlateConf: '0.25',
+      charModel: 'char-default',
+      charConf: '0.25',
+      plateCropScale: 'auto',
+      minPlateWidth: '300',
+    },
+  },
+  {
+    label: 'YOLO v2 low confidence',
+    options: {
+      detectEngine: 'yolo',
+      ocrEngine: 'yolo',
+      fallback: 'roboflow',
+      finalFallback: 'gemini',
+      fallbackDetect: 'yolo',
+      plateModel: 'plate-v2',
+      fallbackPlateModel: 'plate-v1',
+      plateConf: '0.25,0.18,0.12',
+      fallbackPlateConf: '0.2,0.15,0.1',
+      charModel: 'char-default',
+      charConf: '0.2',
+      plateCropScale: '3',
+      minPlateWidth: '420',
+    },
+  },
+  {
+    label: 'YOLO legacy plate model',
+    options: {
+      detectEngine: 'yolo',
+      ocrEngine: 'yolo',
+      fallback: 'roboflow',
+      finalFallback: 'gemini',
+      fallbackDetect: 'none',
+      plateModel: 'plate-v1',
+      fallbackPlateModel: 'plate-v1',
+      plateConf: '0.25,0.18,0.12',
+      fallbackPlateConf: '0.2,0.15,0.1',
+      charModel: 'char-default',
+      charConf: '0.2',
+      plateCropScale: '3',
+      minPlateWidth: '420',
+    },
+  },
+  {
+    label: 'Roboflow detect + Roboflow OCR',
+    options: {
+      detectEngine: 'roboflow',
+      ocrEngine: 'roboflow',
+      fallback: 'gemini',
+      finalFallback: 'gemini',
+      fallbackDetect: 'yolo',
+      plateModel: 'plate-v2',
+      fallbackPlateModel: 'plate-v1',
+      plateConf: '0.25,0.15',
+      fallbackPlateConf: '0.2,0.12',
+      charModel: 'char-default',
+      charConf: '0.2',
+      plateCropScale: 'auto',
+      minPlateWidth: '300',
+    },
+  },
+  {
+    label: 'Roboflow detect + Cloud OCR 2',
+    options: {
+      detectEngine: 'roboflow',
+      ocrEngine: 'gemini',
+      fallback: 'roboflow',
+      finalFallback: 'gemini',
+      fallbackDetect: 'yolo',
+      plateModel: 'plate-v2',
+      fallbackPlateModel: 'plate-v1',
+      plateConf: '0.25,0.15',
+      fallbackPlateConf: '0.2,0.12',
+      charModel: 'char-default',
+      charConf: '0.2',
+      plateCropScale: 'auto',
+      minPlateWidth: '300',
+    },
+  },
+];
+
+function firstPlateScore(result?: PlateOcrResponse) {
+  return result?.plates?.[0]?.score ?? -1;
+}
+
+function betterDetectFallback(current: PlateOcrResponse | undefined, candidate: PlateOcrResponse) {
+  if (!current || firstPlateScore(candidate) > firstPlateScore(current)) {
+    return candidate;
+  }
+  return current;
+}
 
 export function useMaterialTripEditorViewModel({ refresh }: UseMaterialTripEditorParams) {
   const { message } = AntApp.useApp();
@@ -20,6 +129,7 @@ export function useMaterialTripEditorViewModel({ refresh }: UseMaterialTripEdito
   const [plateOcr, setPlateOcr] = useState<PlateOcrResponse>();
   const [plateDetecting, setPlateDetecting] = useState(false);
   const [plateOcrError, setPlateOcrError] = useState<string>();
+  const [plateOcrAttemptLabel, setPlateOcrAttemptLabel] = useState<string>();
 
   useEffect(() => {
     return () => {
@@ -34,7 +144,39 @@ export function useMaterialTripEditorViewModel({ refresh }: UseMaterialTripEdito
     setPlatePreviewUrl(undefined);
     setPlateOcr(undefined);
     setPlateOcrError(undefined);
+    setPlateOcrAttemptLabel(undefined);
     setPlateDetecting(false);
+  };
+
+  const detectPlateWithAutoSwitch = async (image: File) => {
+    let bestResult: PlateOcrResponse | undefined;
+    let bestLabel: string | undefined;
+    let lastError: unknown;
+
+    for (const attempt of autoPlateDetectAttempts) {
+      setPlateOcrAttemptLabel(attempt.label);
+
+      try {
+        const result = await api.detectPlate(image, attempt.options);
+        const selectedResult = betterDetectFallback(bestResult, result);
+        if (selectedResult === result) {
+          bestLabel = attempt.label;
+        }
+        bestResult = selectedResult;
+
+        if (detectedPlateText(result)) {
+          return { result, attemptLabel: attempt.label };
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (bestResult) {
+      return { result: bestResult, attemptLabel: bestLabel };
+    }
+
+    throw lastError || new Error('Plate OCR auto detection failed.');
   };
 
   const detectUploadedPlate = async (file: File) => {
@@ -42,12 +184,14 @@ export function useMaterialTripEditorViewModel({ refresh }: UseMaterialTripEdito
     setPlatePreviewUrl(URL.createObjectURL(file));
     setPlateOcr(undefined);
     setPlateOcrError(undefined);
+    setPlateOcrAttemptLabel(undefined);
     setPlateDetecting(true);
 
     try {
-      const result = await api.detectPlate(file);
+      const { result, attemptLabel } = await detectPlateWithAutoSwitch(file);
       const plateText = detectedPlateText(result);
       setPlateOcr(result);
+      setPlateOcrAttemptLabel(attemptLabel);
 
       if (plateText) {
         form.setFieldValue('licensePlate', plateText);
@@ -123,6 +267,7 @@ export function useMaterialTripEditorViewModel({ refresh }: UseMaterialTripEdito
     plateOcr,
     plateDetecting,
     plateOcrError,
+    plateOcrAttemptLabel,
     setOpen,
     openCreate,
     openEdit,

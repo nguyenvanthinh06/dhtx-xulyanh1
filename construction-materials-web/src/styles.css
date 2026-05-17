@@ -219,6 +219,122 @@ body {
   margin-bottom: 2px;
 }
 
+.plate-detect-page {
+  min-height: calc(100vh - 106px);
+}
+
+.plate-detect-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 42%) minmax(360px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.plate-upload-panel,
+.plate-option-panel,
+.plate-result-panel {
+  border: 1px solid rgba(23, 33, 31, 0.12);
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.plate-upload-panel,
+.plate-option-panel {
+  padding: 12px;
+}
+
+.plate-detect-preview {
+  display: grid;
+  place-items: center;
+  height: min(52vh, 430px);
+  min-height: 260px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(23, 33, 31, 0.12);
+  border-radius: 6px;
+  background:
+    linear-gradient(135deg, rgba(20, 108, 95, 0.08), transparent 42%),
+    #e9e4d8;
+}
+
+.plate-preview-empty {
+  display: grid;
+  gap: 8px;
+  place-items: center;
+  color: #70807a;
+}
+
+.plate-preview-empty .anticon {
+  font-size: 34px;
+}
+
+.plate-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(23, 33, 31, 0.1);
+}
+
+.plate-detect-actions {
+  width: 100%;
+  padding-top: 2px;
+}
+
+.plate-result-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+}
+
+.plate-result-summary {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.plate-result-summary > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 74px;
+  padding: 10px 12px;
+  border: 1px solid rgba(20, 108, 95, 0.14);
+  border-radius: 6px;
+  background: #f7f5ef;
+}
+
+.plate-result-summary h2 {
+  margin: 2px 0 0;
+  color: #146c5f;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.plate-log-panel {
+  border: 1px solid rgba(23, 33, 31, 0.12);
+  border-radius: 6px;
+  background: #17211f;
+  color: #f7f5ef;
+}
+
+.plate-log-panel summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-weight: 700;
+}
+
+.plate-log-panel pre {
+  max-height: 280px;
+  margin: 0;
+  padding: 0 12px 12px;
+  overflow: auto;
+  color: #dce7e2;
+  white-space: pre-wrap;
+}
+
 .ant-table-wrapper {
   border-radius: 8px;
 }
@@ -261,5 +377,14 @@ body {
 
   .plate-ocr-row {
     grid-template-columns: 1fr;
+  }
+
+  .plate-detect-layout,
+  .plate-result-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .plate-detect-preview {
+    height: 320px;
   }
 }

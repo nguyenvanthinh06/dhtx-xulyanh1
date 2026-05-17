@@ -171,3 +171,27 @@ py run.py input/f-1740160764017-693062374.jpg --trained-plate-model models/plate
 
 // run server api py:
 py api_server.py --host 127.0.0.1 --port 8000
+
+// Run labelImg for char:
+py open_label_tool.py char
+// Run labelImg for plate
+py open_label_tool.py plate
+
+---- Train--
+// Nếu bạn vừa label vùng biển số trong input-not-detect, chạy:
+
+& $PY scripts/dataset/split_yolo_dataset.py --images-dir input-not-detect --output-dir data/plate_detection --ground-truth data/ground_truth/input_not_detect.csv
+
+& $PY scripts/train/train_yolo.py --config config/train/plate_yolo.yaml --dry-run
+
+& $PY scripts/train/train_yolo.py --config config/train/plate_yolo.yaml
+Sau khi train xong, copy model tốt nhất.
+
+//Nếu bạn vừa label ký tự OCR trong data/char_detection/raw_crops, chạy:
+
+& $PY scripts/dataset/split_yolo_dataset.py --images-dir data/char_detection/raw_crops --output-dir data/char_detection
+
+& $PY scripts/train/train_yolo.py --config config/train/char_yolo.yaml --dry-run
+
+& $PY scripts/train/train_yolo.py --config config/train/char_yolo.yaml
+Sau đó copy model OCR ký tự:

@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import axios, { AxiosError } from 'axios';
 import FormData = require('form-data');
-import { PythonPlateOcrResponse } from './plate-ocr.types';
+import {
+  PLATE_OCR_OPTION_KEYS,
+  PlateOcrDetectOptions,
+  PythonPlateOcrResponse,
+} from './plate-ocr.types';
 
 @Injectable()
 export class PlateOcrService {
@@ -27,13 +31,22 @@ export class PlateOcrService {
     }
   }
 
-  async detectFromUpload(file: Express.Multer.File): Promise<PythonPlateOcrResponse> {
+  async detectFromUpload(
+    file: Express.Multer.File,
+    options: PlateOcrDetectOptions = {},
+  ): Promise<PythonPlateOcrResponse> {
     const form = new FormData();
     form.append('image', file.buffer, {
       filename: file.originalname || 'upload.jpg',
       contentType: file.mimetype || 'application/octet-stream',
       knownLength: file.size,
     });
+    for (const key of PLATE_OCR_OPTION_KEYS) {
+      const value = options[key];
+      if (value !== undefined && value !== null && value !== '') {
+        form.append(key, String(value));
+      }
+    }
 
     try {
       const response = await axios.post<PythonPlateOcrResponse>(`${this.apiUrl}/detect`, form, {

@@ -207,6 +207,7 @@ export function MaterialTripsPage({
         onCancel={() => editor.setOpen(false)}
         onOk={editor.submit}
         confirmLoading={editor.saving}
+        okButtonProps={{ disabled: editor.plateDetecting }}
         width={960}
         destroyOnClose
       >
@@ -316,7 +317,11 @@ export function MaterialTripsPage({
                           type="info"
                           showIcon
                           message="Đang detect biển số"
-                          description="Backend đang gọi Python OCR API. Kết quả sẽ được tự điền vào ô biển số xác nhận."
+                          description={
+                            editor.plateOcrAttemptLabel
+                              ? `Đang thử cấu hình: ${editor.plateOcrAttemptLabel}`
+                              : 'Backend đang gọi Python OCR API. Kết quả sẽ được tự điền vào ô biển số xác nhận.'
+                          }
                         />
                       ) : null}
                       {editor.plateOcr ? (
@@ -337,6 +342,9 @@ export function MaterialTripsPage({
                                   : 'không có'}
                               </Text>
                               <Text>Nguồn OCR: {editor.plateOcr.plates?.[0]?.ocr_source || 'không có'}</Text>
+                              {editor.plateOcrAttemptLabel ? (
+                                <Text>Cấu hình OCR: {editor.plateOcrAttemptLabel}</Text>
+                              ) : null}
                               <Text type="secondary">Nếu biển số sai, sửa trực tiếp ở ô "Biển số xác nhận".</Text>
                             </Space>
                           }

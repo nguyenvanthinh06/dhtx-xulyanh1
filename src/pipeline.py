@@ -4,6 +4,7 @@
 # Anh xe -> Detect vung bien so -> crop -> OCR detect ky tu -> sort -> text
 
 import csv
+import math
 import os
 import re
 from pathlib import Path
@@ -56,6 +57,8 @@ class LicensePlatePipeline:
         final_fallback_ocr_engine: str = "none",
         input_not_detect_dir: str = "input-not-detect",
         input_not_detect_ground_truth_path: str = "data/ground_truth/input_not_detect.csv",
+        plate_crop_scale: str | float = "auto",
+        min_plate_width: int = 300,
         debug_chars: bool = False,
     ):
         # Lay API key: uu tien tu tham so, sau do doc bien moi truong
@@ -63,6 +66,8 @@ class LicensePlatePipeline:
         gemini_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
 
         self.input_not_detect_dir = Path(input_not_detect_dir).resolve()
+        self.plate_crop_scale = plate_crop_scale
+        self.min_plate_width = max(1, int(min_plate_width))
         self.input_not_detect_ground_truth = self._load_input_not_detect_ground_truth(
             input_not_detect_ground_truth_path
         )
@@ -337,17 +342,23 @@ class LicensePlatePipeline:
             numpy array (BGR) - anh da tien xu ly
         """
         h, w = plate_crop.shape[:2]
+        scale = 1
+        scale_mode = str(self.plate_crop_scale).strip().lower()
 
-        # Phong to anh nho: neu chieu rong < 150px, phong to len >= 300px.
-        # Roboflow OCR hoat dong tot hon voi anh lon, ky tu ro rang.
-        # Giu nguyen anh mau (BGR) de model nhan dien chinh xac.
-        if w < 150:
-            # Tinh ti le phong to de dat toi thieu 300px chieu rong
-            scale = max(2, 300 // w)
+        if scale_mode not in {"", "auto", "none", "off", "1", "1.0"}:
+            try:
+                scale = max(1, int(round(float(scale_mode))))
+            except ValueError:
+                print(f"  [Preprocess] Ignoring invalid plate crop scale: {self.plate_crop_scale}")
+                scale = 1
+        elif scale_mode == "auto" and w < 150:
+            scale = max(2, math.ceil(self.min_plate_width / w))
+
+        if scale > 1:
             plate_crop = cv2.resize(
                 plate_crop,
                 (w * scale, h * scale),
-                interpolation=cv2.INTER_CUBIC  # Phong to muot, it bi vo
+                interpolation=cv2.INTER_CUBIC
             )
             print(f"  [Preprocess] Upscaled {w}x{h} -> {w*scale}x{h*scale}")
 
