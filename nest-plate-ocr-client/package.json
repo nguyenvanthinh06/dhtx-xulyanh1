@@ -5,6 +5,7 @@
   "description": "NestJS backend proxy/client for the Python license plate OCR API",
   "scripts": {
     "build": "nest build",
+    "seed:construction-data": "ts-node -r tsconfig-paths/register src/seeds/construction-data.seed.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js"

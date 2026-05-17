@@ -167,3 +167,7 @@ Neu muon chi ro duong dan model:
 ```powershell
 py run.py input/f-1740160764017-693062374.jpg --trained-plate-model models/plate_detector_v2.pt --char-model models/char_detector.pt
 ```
+
+
+// run server api py:
+py api_server.py --host 127.0.0.1 --port 8000

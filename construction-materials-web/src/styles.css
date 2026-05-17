@@ -112,6 +112,38 @@ body {
   min-width: 260px;
 }
 
+.filter-strip {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid rgba(20, 108, 95, 0.14);
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.filter-controls {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.filter-input {
+  width: 240px;
+}
+
+.filter-select-sm {
+  min-width: 170px;
+}
+
+.filter-date-range {
+  min-width: 260px;
+}
+
 .full-input {
   width: 100%;
 }
@@ -210,6 +242,17 @@ body {
 
   .filter-select {
     min-width: 100%;
+  }
+
+  .filter-strip {
+    flex-direction: column;
+  }
+
+  .filter-controls,
+  .filter-input,
+  .filter-select-sm,
+  .filter-date-range {
+    width: 100%;
   }
 
   .plate-preview-panel {
